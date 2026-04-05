@@ -22,23 +22,23 @@ extern TFT_eSPI* tftPtr;
 #define CR  108
 
 // Forward declarations
-void drawAngryEye(float gx, float gy, float lidT, float eyeScale, float pupilScale, uint16_t irisOuter, uint16_t irisInner);
-void drawClosedLids();
-void drawHeartEye();
+inline void drawAngryEye(float gx, float gy, float lidT, float eyeScale, float pupilScale, uint16_t irisOuter, uint16_t irisInner);
+inline void drawClosedLids();
+inline void drawHeartEye();
 
 // ── Main draw entry point ────────────────────────────────────
-void drawEye(float gx, float gy, bool isRight, float blinkPhase,
-             const String& mood, float eyeScale, float pupilScale,
-             uint16_t irisOuter, uint16_t irisInner) {
+inline void drawEye(float gx, float gy, bool isRight, float blinkPhase,
+                    const char* mood, float eyeScale, float pupilScale,
+                    uint16_t irisOuter, uint16_t irisInner) {
 
   float lidT = (blinkPhase <= 0.5f) ? (blinkPhase * 2.0f) : (2.0f - blinkPhase * 2.0f);
   lidT = constrain(lidT, 0.0f, 1.0f);
 
   tftPtr->fillScreen(C_BLACK);
 
-  if (mood == "closed") { drawClosedLids(); return; }
-  if (mood == "heart")  { drawHeartEye();   return; }
-  if (mood == "angry")  {
+  if (strcmp(mood, "closed") == 0) { drawClosedLids(); return; }
+  if (strcmp(mood, "heart")  == 0) { drawHeartEye();   return; }
+  if (strcmp(mood, "angry")  == 0) {
     drawAngryEye(gx, gy, lidT, eyeScale, pupilScale, irisOuter, irisInner);
     return;
   }
@@ -51,7 +51,7 @@ void drawEye(float gx, float gy, bool isRight, float blinkPhase,
   int ox = (int)(gx * CR * 0.75f);
   int oy = (int)(gy * CR * 0.75f);
 
-  if (mood == "derp") { ox = isRight ? -18 : 18; oy = 14; }
+  if (strcmp(mood, "derp") == 0) { ox = isRight ? -18 : 18; oy = 14; }
 
   int ix = CX + ox, iy = CY + oy;
   tftPtr->fillCircle(ix, iy, irisR, irisOuter);
@@ -64,29 +64,29 @@ void drawEye(float gx, float gy, bool isRight, float blinkPhase,
                  (int)(pupilR * 0.28f), C_SPECULAR);
 
   // Mood overlays
-  if (mood == "wide") {
+  if (strcmp(mood, "wide") == 0) {
     tftPtr->drawCircle(CX, CY, CR,     C_WHITE);
     tftPtr->drawCircle(CX, CY, CR - 1, C_EYE_WHITE);
   }
-  if (mood == "squint") {
+  if (strcmp(mood, "squint") == 0) {
     int squintY = CY;
     tftPtr->fillRect(0, squintY, 240, 240, C_BLACK);
     tftPtr->drawCircle(CX, CY, CR, C_BLACK);
   }
-  if (mood == "laser") {
+  if (strcmp(mood, "laser") == 0) {
     for (int i = 1; i <= 4; i++) {
       uint16_t glow = tftPtr->color565(200 - i * 30, 0, 0);
       tftPtr->drawCircle(ix, iy, pupilR + i * 5, glow);
     }
     tftPtr->drawCircle(CX, CY, CR, tftPtr->color565(180, 0, 0));
   }
-  if (mood == "sleepy") {
+  if (strcmp(mood, "sleepy") == 0) {
     int droopY = CY - (int)(CR * 0.35f);
     tftPtr->fillRect(0, 0, 240, droopY, C_BLACK);
   }
 
   // Blink lid
-  if (lidT > 0.01f && mood != "squint" && mood != "sleepy") {
+  if (lidT > 0.01f && strcmp(mood, "squint") != 0 && strcmp(mood, "sleepy") != 0) {
     int lidH = (int)(CR * 2 * lidT);
     tftPtr->fillRect(0, 0, 240, CY - CR + lidH, C_BLACK);
     tftPtr->drawFastHLine(0, CY - CR + lidH, 240, tftPtr->color565(40, 30, 20));
@@ -96,8 +96,8 @@ void drawEye(float gx, float gy, bool isRight, float blinkPhase,
   for (int r = CR + 1; r <= 120; r++) tftPtr->drawCircle(CX, CY, r, C_BLACK);
 }
 
-void drawAngryEye(float gx, float gy, float lidT, float eyeScale,
-                  float pupilScale, uint16_t irisOuter, uint16_t irisInner) {
+inline void drawAngryEye(float gx, float gy, float lidT, float eyeScale,
+                          float pupilScale, uint16_t irisOuter, uint16_t irisInner) {
   tftPtr->fillCircle(CX, CY, CR, C_EYE_WHITE);
   int brow_y = CY - (int)(CR * 0.55f);
   tftPtr->fillTriangle(CX - CR, CY - CR, CX, brow_y, CX - CR, CY, C_BLACK);
@@ -118,7 +118,7 @@ void drawAngryEye(float gx, float gy, float lidT, float eyeScale,
   for (int r = CR + 1; r <= 120; r++) tftPtr->drawCircle(CX, CY, r, C_BLACK);
 }
 
-void drawClosedLids() {
+inline void drawClosedLids() {
   int lineY = CY, halfW = (int)(CR * 0.75f);
   for (int y = lineY - 12; y <= lineY; y++) {
     float frac = 1.0f - (float)(lineY - y) / 12.0f;
@@ -132,7 +132,7 @@ void drawClosedLids() {
   }
 }
 
-void drawHeartEye() {
+inline void drawHeartEye() {
   int hx = CX, hy = CY + 8, hr = 38;
   uint16_t heartCol = C_HEART_RED;
   uint16_t pinkCol  = tftPtr->color565(255, 120, 160);

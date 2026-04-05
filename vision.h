@@ -101,17 +101,19 @@ inline bool detectFaceProxy(const uint8_t* frame, int w, int h,
   for (int y = 0; y < scanH; y += 2) {
     for (int x = xStart; x < xEnd; x += 2) {
       uint8_t v = frame[y * w + x];
-      // Skin tone in greyscale: mid-range, not too dark or bright
-      // Adjust range based on lighting conditions
-      if (v > 90 && v < 210) {
+      // Skin tone in greyscale: mid-range, not too dark or bright.
+      // Narrowed from 90-210 to 100-190 to reduce false positives
+      // from walls, floors, and other mid-lit surfaces.
+      if (v > 100 && v < 190) {
         skinCount++;
       }
     }
   }
 
-  // Require at least 20% of region to be "skin-like"
+  // Require at least 35% of region to be "skin-like" — raised from 20%
+  // to reduce false positives in typical indoor environments.
   faceSize = (regionPixels > 0) ? (float)skinCount / regionPixels : 0.0f;
-  return (faceSize > 0.20f);
+  return (faceSize > 0.35f);
 }
 
 // ── motionIntensity ──────────────────────────────────────────

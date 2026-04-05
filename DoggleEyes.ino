@@ -49,7 +49,6 @@
 // ── TFT object — pointer so constructor runs inside setup() ──
 // Global TFT_eSPI construction causes StoreProhibited on ESP32-S3
 TFT_eSPI* tftPtr = nullptr;
-TFT_eSPI& tft    = *reinterpret_cast<TFT_eSPI*>(0); // placeholder; real ref set in setup
 
 // ── BLE globals ───────────────────────────────────────────────
 NimBLEServer*         pServer = nullptr;
@@ -108,7 +107,6 @@ inline void setMood(const char* m) {
 }
 
 const int FRAME_MS = 1000 / 30;
-String rxBuffer = "";
 
 // ─────────────────────────────────────────────────────────────
 //  BLE CALLBACKS
@@ -126,12 +124,12 @@ class ServerCallbacks : public NimBLEServerCallbacks {
   }
 };
 
-void processCommand(const String& json) {
+void processCommand(const char* json) {
   StaticJsonDocument<512> doc;
   if (deserializeJson(doc, json)) return;
 
   portENTER_CRITICAL(&eyeMux);
-  if (doc.containsKey("mood"))          { strncpy(state.mood, doc["mood"].as<const char*>(), 15); state.mood[15]='\0'; }
+  if (doc.containsKey("mood"))          { strncpy(state.mood, doc["mood"].as<const char*>(), sizeof(state.mood) - 1); state.mood[sizeof(state.mood) - 1] = '\0'; }
   if (doc.containsKey("gazeX"))          state.manualGazeX   = doc["gazeX"].as<float>();
   if (doc.containsKey("gazeY"))          state.manualGazeY   = doc["gazeY"].as<float>();
   if (doc.containsKey("eyeScale"))       state.eyeScale      = doc["eyeScale"].as<float>();
@@ -172,17 +170,33 @@ void processCommand(const String& json) {
 class RxCallbacks : public NimBLECharacteristicCallbacks {
   void onWrite(NimBLECharacteristic* pChar, NimBLEConnInfo& connInfo) override {
     std::string val = pChar->getValue();
-    rxBuffer += String(val.c_str());
+    static char rxBuf[1024];
+    static int  rxBufLen = 0;
+
+    int inLen = (int)val.size();
+    if (rxBufLen + inLen >= (int)sizeof(rxBuf) - 1) rxBufLen = 0;
+    memcpy(rxBuf + rxBufLen, val.c_str(), inLen);
+    rxBufLen += inLen;
+    rxBuf[rxBufLen] = '\0';
+
     int start = 0, depth = 0;
-    for (int i = 0; i < (int)rxBuffer.length(); i++) {
-      if (rxBuffer[i] == '{') depth++;
-      if (rxBuffer[i] == '}' && --depth == 0) {
-        processCommand(rxBuffer.substring(start, i + 1));
+    for (int i = 0; i < rxBufLen; i++) {
+      if (rxBuf[i] == '{') depth++;
+      if (rxBuf[i] == '}' && --depth == 0) {
+        char tmp[512];
+        int len = i + 1 - start;
+        if (len < (int)sizeof(tmp)) {
+          memcpy(tmp, rxBuf + start, len);
+          tmp[len] = '\0';
+          processCommand(tmp);
+        }
         start = i + 1;
       }
     }
-    rxBuffer = rxBuffer.substring(start);
-    if (rxBuffer.length() > 1024) rxBuffer = "";
+    int remaining = rxBufLen - start;
+    if (remaining > 0) memmove(rxBuf, rxBuf + start, remaining);
+    rxBufLen = remaining;
+    rxBuf[rxBufLen] = '\0';
   }
 };
 
@@ -270,10 +284,10 @@ void setup() {
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
 
-  tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   selectDisplay(true);
   tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   selectDisplay(false);
+  tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   Serial.println("[Init] Displays OK.");
 
   // ── Haptic motors ──────────────────────────────────────
@@ -388,20 +402,20 @@ void loop() {
   gy = constrain(gy, -0.45f, 0.45f);
 
   // ── Pupil dilation ────────────────────────────────────
+  // pupilMul is computed locally — not written back to state.pupilScale
+  // so the BLE-set base value is always preserved.
   float pupilMul = s.pupilScale;
   if (s.cameraActive && s.lightEnabled) {
     float lightFactor = 0.6f + (1.0f - s.sceneBrightness) * 0.8f;
     pupilMul = constrain(s.pupilScale * lightFactor, 0.4f, 1.8f);
-    portENTER_CRITICAL(&eyeMux);
-    state.pupilScale = pupilMul;
-    portEXIT_CRITICAL(&eyeMux);
   }
 
   // ── Face reaction ─────────────────────────────────────
-  // Build effective mood as a local String — safe here (stack alloc)
-  String effectiveMood = String(s.mood);
+  char effectiveMood[16];
+  strncpy(effectiveMood, s.mood, sizeof(effectiveMood) - 1);
+  effectiveMood[sizeof(effectiveMood) - 1] = '\0';
   if (s.cameraActive && s.faceEnabled && s.faceDetected && s.faceSize > 0.15f) {
-    if (effectiveMood == "normal") effectiveMood = "wide";
+    if (strcmp(effectiveMood, "normal") == 0) strncpy(effectiveMood, "wide", sizeof(effectiveMood) - 1);
   }
 
   // ── Draw both eyes ────────────────────────────────────
