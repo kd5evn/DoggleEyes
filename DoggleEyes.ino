@@ -63,47 +63,67 @@ portMUX_TYPE eyeMux = portMUX_INITIALIZER_UNLOCKED;
 HapticState hapticState;
 
 // ── Eye state ─────────────────────────────────────────────────
-// mood uses char[16] instead of String — avoids heap alloc at
-// global init time which causes StoreProhibited on ESP32-S3.
+// Pure POD struct — NO default member initializers.
+// Any initializer (even = 0.0f) causes the compiler to generate
+// a constructor, which runs at static-init time before the Arduino
+// runtime is ready on ESP32-S3, producing a StoreProhibited panic.
+// All fields are initialised explicitly in setup() via initState().
 struct EyeState {
   char     mood[16];
-  float    manualGazeX    = 0.0f;
-  float    manualGazeY    = 0.0f;
-  uint16_t irisOuter      = 0x6204;
-  uint16_t irisInner      = 0xA145;
-  float    eyeScale       = 1.0f;
-  float    pupilScale     = 1.0f;
-  bool     autoBlink      = true;
-  float    blinkRate      = 4.0f;
-  bool     wiggle         = false;
-  bool     mirror         = true;
+  float    manualGazeX;
+  float    manualGazeY;
+  uint16_t irisOuter;
+  uint16_t irisInner;
+  float    eyeScale;
+  float    pupilScale;
+  bool     autoBlink;
+  float    blinkRate;
+  bool     wiggle;
+  bool     mirror;
 
-  bool     cameraActive   = false;
-  bool     motionEnabled  = true;
-  bool     lightEnabled   = true;
-  bool     faceEnabled    = true;
+  bool     cameraActive;
+  bool     motionEnabled;
+  bool     lightEnabled;
+  bool     faceEnabled;
 
-  float    visionGazeX    = 0.0f;
-  float    visionGazeY    = 0.0f;
-  float    sceneBrightness = 1.0f;
-  bool     motionDetected  = false;
-  bool     faceDetected    = false;
-  float    faceSize        = 0.0f;
+  float    visionGazeX;
+  float    visionGazeY;
+  float    sceneBrightness;
+  bool     motionDetected;
+  bool     faceDetected;
+  float    faceSize;
 
-  float    blinkPhase      = 0.0f;
-  bool     blinking        = false;
-  unsigned long lastBlink  = 0;
-  float    wiggleOffX      = 0.0f;
-  float    wiggleOffY      = 0.0f;
-  unsigned long lastWiggle = 0;
-  unsigned long lastAlert  = 0;
-  bool     alertActive     = false;
+  float    blinkPhase;
+  bool     blinking;
+  unsigned long lastBlink;
+  float    wiggleOffX;
+  float    wiggleOffY;
+  unsigned long lastWiggle;
+  unsigned long lastAlert;
+  bool     alertActive;
 } state;
 
 // Helper — set mood safely
 inline void setMood(const char* m) {
   strncpy(state.mood, m, sizeof(state.mood) - 1);
   state.mood[sizeof(state.mood) - 1] = '\0';
+}
+
+// Initialise all EyeState fields — called from setup(), never at global scope
+inline void initState() {
+  memset(&state, 0, sizeof(state));
+  setMood("normal");
+  state.irisOuter      = 0x6204;
+  state.irisInner      = 0xA145;
+  state.eyeScale       = 1.0f;
+  state.pupilScale     = 1.0f;
+  state.autoBlink      = true;
+  state.blinkRate      = 4.0f;
+  state.mirror         = true;
+  state.motionEnabled  = true;
+  state.lightEnabled   = true;
+  state.faceEnabled    = true;
+  state.sceneBrightness = 1.0f;
 }
 
 const int FRAME_MS = 1000 / 30;
@@ -275,8 +295,8 @@ void setup() {
   delay(200);   // brief settle before first print
   Serial.println("\n[DoggleEyes v3.1 Haptic] Booting...");
 
-  // Initialise mood — must be done here, not at global scope
-  setMood("normal");
+  // Initialise all state — must be done here, not at global scope
+  initState();
 
   // ── TFT — create on heap inside setup() ───────────────
   tftPtr = new TFT_eSPI();
@@ -305,6 +325,10 @@ void setup() {
     portEXIT_CRITICAL(&eyeMux);
   } else {
     sensor_t* s = esp_camera_sensor_get();
+    if (!s) {
+      Serial.println("[Camera] sensor_get() returned NULL — halting.");
+      while (true) delay(1000);
+    }
     s->set_framesize(s, FRAMESIZE_QQVGA);
     s->set_pixformat(s, PIXFORMAT_GRAYSCALE);
     s->set_gainceiling(s, (gainceiling_t)6);
