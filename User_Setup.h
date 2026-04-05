@@ -22,7 +22,7 @@
 // ── Camera-safe SPI pins ─────────────────────────────────────
 #define TFT_MOSI   4    // ← CHANGED (was 11, conflicts with camera Y8)
 #define TFT_SCLK   5    // ← CHANGED (was 12, conflicts with camera Y7)
-#define TFT_CS     1    // ← CHANGED (was 9)   LEFT eye CS
+#define TFT_CS    -1    // Disabled — CS managed manually via selectDisplay()
 #define TFT_DC     3    // ← CHANGED (was 7)
 #define TFT_RST    6    //   unchanged
 
