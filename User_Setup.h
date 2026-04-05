@@ -33,8 +33,17 @@
 #define LOAD_FONT2
 #define LOAD_FONT4
 
+// ── SPI port — required for ESP32-S3 ─────────────────────────
+// TFT_eSPI defaults to VSPI (port 3) which is not properly mapped
+// on ESP32-S3 — register base resolves to 0, so any SPI register
+// write at offset 0x10 crashes with StoreProhibited.
+// USE_HSPI_PORT selects port 2 (HSPI), valid on both ESP32 and S3.
+// GPIO matrix routes our pins (MOSI=4, SCLK=5) to whichever
+// SPI host is selected — no IOMUX conflict.
+#define USE_HSPI_PORT
+
 // ── SPI speed ────────────────────────────────────────────────
 // Note: camera uses its own parallel interface (not SPI),
 // so there is no bus conflict. Display SPI runs independently.
-#define SPI_FREQUENCY       40000000
+#define SPI_FREQUENCY       27000000   // 27 MHz — conservative start; try 40 MHz once working
 #define SPI_READ_FREQUENCY   5000000

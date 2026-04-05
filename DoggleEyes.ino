@@ -297,29 +297,28 @@ void setup() {
 
   // Initialise all state — must be done here, not at global scope
   initState();
-  Serial.println("[Debug] initState OK");
+
+  // ── SPI bus — pre-initialise before TFT_eSPI::init() ─────
+  // On ESP32-S3, TFT_eSPI defaults to VSPI which maps to an invalid
+  // SPI register base, causing StoreProhibited at address 0x10.
+  // Pre-claiming HSPI via SPI.begin() (matching USE_HSPI_PORT in
+  // User_Setup.h) prevents the NULL spi_device handle crash.
+  SPI.begin(TFT_SCLK, -1, TFT_MOSI, -1);
 
   // ── TFT — create on heap inside setup() ───────────────
-  Serial.printf("[Debug] Free heap before TFT: %u\n", ESP.getFreeHeap());
   tftPtr = new TFT_eSPI();
-  Serial.printf("[Debug] tftPtr = %p\n", tftPtr);
-  if (!tftPtr) { Serial.println("[FATAL] TFT alloc failed"); while(true) delay(1000); }
 
   // ── Displays ──────────────────────────────────────────
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
-  Serial.println("[Debug] CS pins OK");
 
   selectDisplay(true);
-  Serial.println("[Debug] calling tft->init() left");
   tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   selectDisplay(false);
-  Serial.println("[Debug] calling tft->init() right");
   tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   Serial.println("[Init] Displays OK.");
 
   // ── Haptic motors ──────────────────────────────────────
-  Serial.println("[Debug] hapticInit start");
   hapticInit();
   // hapticTest(); // uncomment to test motors at boot
 
