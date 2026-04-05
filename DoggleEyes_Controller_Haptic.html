@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>DoggleEyes Camera + Haptic</title>
+<style>
+:root{--bg:#1a1a2e;--card:#16213e;--panel:#0f3460;--accent:#e94560;--gold:#f5a623;--teal:#00d4aa;--text:#eaeaea;--muted:#8892a4;--green:#4caf50;--haptic:#ff6f00;--hapticL:#ff9a3c}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding-bottom:2rem;overflow-x:hidden}
+h1{font-size:1.5rem;font-weight:900;color:var(--gold);padding:1rem 0 0.1rem;text-align:center}
+.sub{font-size:.58rem;color:var(--muted);letter-spacing:2px;text-align:center;margin-bottom:.3rem}
+.ble-bar{width:100%;max-width:420px;padding:0 .8rem;margin:.3rem 0}
+#connectBtn{width:100%;padding:.9rem;border:none;border-radius:14px;font-size:1rem;font-weight:900;cursor:pointer;transition:all .25s;letter-spacing:.5px}
+#connectBtn.idle{background:var(--teal);color:#000}
+#connectBtn.conn{background:rgba(0,212,170,.15);color:var(--teal);border:2px solid var(--teal)}
+#connectBtn.error{background:rgba(233,69,96,.15);color:var(--accent);border:2px solid var(--accent)}
+#connectBtn:active{transform:scale(.97)}
+.ble-status{text-align:center;font-size:.7rem;padding:.3rem;border-radius:8px;margin-top:.35rem}
+.ble-status.ok{color:var(--teal);background:rgba(0,212,170,.1)}
+.ble-status.err{color:var(--accent);background:rgba(233,69,96,.1)}
+.ble-status.idle{color:var(--muted)}
+
+/* Haptic intensity panel */
+.haptic-panel{width:100%;max-width:420px;padding:0 .8rem;margin:.35rem 0}
+.haptic-box{background:rgba(255,111,0,.06);border:1px solid rgba(255,111,0,.25);border-radius:14px;padding:.9rem 1rem}
+.haptic-title{font-size:.6rem;letter-spacing:2px;text-transform:uppercase;color:var(--haptic);margin-bottom:.7rem;display:flex;align-items:center;gap:.4rem}
+.haptic-meters{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.hm{display:flex;flex-direction:column;gap:.3rem}
+.hm-label{font-size:.62rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center}
+.hm-label span{color:var(--hapticL);font-weight:900}
+.hm-bar{height:20px;background:rgba(255,255,255,.06);border-radius:10px;overflow:hidden;position:relative}
+.hm-fill{height:100%;border-radius:10px;transition:width .12s ease-out;background:linear-gradient(90deg,#ff6f00,#ffb74d);min-width:0}
+.hm-fill.active{box-shadow:0 0 8px rgba(255,111,0,.5)}
+
+/* Camera telemetry */
+.cam-panel{width:100%;max-width:420px;padding:0 .8rem;margin:.3rem 0}
+.cam-box{background:rgba(0,212,170,.05);border:1px solid rgba(0,212,170,.18);border-radius:14px;padding:.7rem 1rem;display:grid;grid-template-columns:1fr 1fr;gap:.35rem}
+.cam-stat{display:flex;flex-direction:column;align-items:center;padding:.35rem;background:rgba(255,255,255,.03);border-radius:8px}
+.cam-stat .label{font-size:.55rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.2rem}
+.cam-stat .value{font-size:.82rem;font-weight:900}
+.cam-stat .value.active{color:var(--teal)}
+.cam-stat .value.inactive{color:var(--muted)}
+.cam-stat .value.alert{color:var(--accent)}
+
+/* Dog status bar */
+.status-bar{background:linear-gradient(135deg,rgba(245,166,35,.14),rgba(255,111,0,.08));border:1px solid rgba(245,166,35,.22);border-radius:14px;padding:.75rem 1rem;width:100%;max-width:420px;margin:.3rem .8rem;display:flex;align-items:center;gap:.8rem}
+.dog-emoji{font-size:2rem;animation:wag .5s ease-in-out infinite}
+@keyframes wag{0%,100%{transform:rotate(-10deg)}50%{transform:rotate(10deg)}}
+.dog-info h3{font-size:.88rem;font-weight:900;color:var(--gold)}
+.dog-info p{font-size:.7rem;color:var(--muted);margin-top:.1rem}
+
+.controls{width:100%;max-width:420px;padding:0 .8rem;display:flex;flex-direction:column;gap:.8rem}
+.card{background:var(--card);border-radius:14px;padding:.9rem 1rem;border:1px solid rgba(255,255,255,.06)}
+.card.haptic-card{border-color:rgba(255,111,0,.2);background:rgba(26,10,0,.4)}
+.disabled-overlay{opacity:.35;pointer-events:none}
+.sec{font-size:.6rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:.5rem}
+.mood-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.mb{background:rgba(255,255,255,.04);border:2px solid transparent;border-radius:10px;padding:.6rem .3rem;color:var(--text);font-size:.74rem;font-weight:700;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:.2rem;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.mb .em{font-size:1.35rem}
+.mb:active{transform:scale(.95)}
+.mb.active{border-color:var(--accent);background:rgba(233,69,96,.15);color:var(--accent)}
+.joystick-area{display:flex;justify-content:center;flex-direction:column;align-items:center;gap:.5rem}
+.j-ring{width:126px;height:126px;border-radius:50%;background:rgba(255,255,255,.04);border:2px solid rgba(255,255,255,.1);position:relative;display:flex;align-items:center;justify-content:center;touch-action:none}
+.j-knob{width:48px;height:48px;background:radial-gradient(circle at 35% 35%,#5a6a7a,var(--panel));border-radius:50%;border:2px solid rgba(255,255,255,.2);position:absolute;transform:translate(var(--jx,0px),var(--jy,0px));box-shadow:0 4px 12px rgba(0,0,0,.5);cursor:grab}
+.j-lbl{font-size:.6rem;color:var(--muted);letter-spacing:1px}
+.sl-row{display:flex;align-items:center;gap:.7rem;margin-bottom:.5rem}
+.sl-row label{font-size:.76rem;color:var(--muted);width:78px;flex-shrink:0}
+input[type=range]{flex:1;-webkit-appearance:none;height:5px;border-radius:3px;background:rgba(255,255,255,.1);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--teal);cursor:pointer}
+input[type=range].haptic-slider::-webkit-slider-thumb{background:var(--haptic)}
+.sv{font-size:.67rem;color:var(--teal);width:26px;text-align:right}
+.sv.hap{color:var(--hapticL)}
+.tog-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.45rem}
+.tog-row label{font-size:.8rem}
+.tog{width:44px;height:24px;background:rgba(255,255,255,.1);border-radius:12px;position:relative;cursor:pointer;border:none;transition:background .3s;flex-shrink:0}
+.tog.on{background:var(--teal)}
+.tog.haptic-tog.on{background:var(--haptic)}
+.tog::after{content:'';width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:3px;left:3px;transition:transform .3s;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.tog.on::after{transform:translateX(20px)}
+.color-row{display:flex;gap:.5rem;flex-wrap:wrap}
+.sw{width:30px;height:30px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:transform .2s,border-color .2s}
+.sw:active{transform:scale(.88)}
+.sw.active{border-color:#fff}
+.qa{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.ab{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:.65rem;color:var(--text);font-size:.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:.4rem;transition:all .2s;-webkit-tap-highlight-color:transparent}
+.ab:active{transform:scale(.97);background:rgba(255,255,255,.1)}
+.ab .em{font-size:1.1rem}
+.haptic-badge{font-size:.54rem;background:rgba(255,111,0,.18);color:var(--haptic);padding:.1rem .35rem;border-radius:4px;letter-spacing:.5px;border:1px solid rgba(255,111,0,.3)}
+.cam-badge{font-size:.54rem;background:rgba(0,212,170,.18);color:var(--teal);padding:.1rem .35rem;border-radius:4px;letter-spacing:.5px}
+.compat-note{width:100%;max-width:420px;padding:0 .8rem;margin-top:.4rem}
+.compat-box{background:rgba(245,166,35,.05);border:1px solid rgba(245,166,35,.16);border-radius:12px;padding:.65rem 1rem;font-size:.7rem;color:var(--muted);line-height:1.6}
+.compat-box strong{color:var(--gold)}
+</style>
+</head>
+<body>
+
+<h1>🐾 DoggleEyes <span style="color:var(--haptic);font-size:.85rem">HAPTIC</span></h1>
+<p class="sub">BLUETOOTH · CAMERA VISION · HAPTIC OBSTACLE SENSE</p>
+
+<div class="ble-bar">
+  <button id="connectBtn" class="idle" onclick="toggleConnect()">🔵 Connect to DoggleEyes</button>
+  <div id="bleStatus" class="ble-status idle">Tap to scan for your dog's goggles</div>
+</div>
+
+<!-- Haptic live meters -->
+<div class="haptic-panel" id="hapticPanel">
+  <div class="haptic-box">
+    <div class="haptic-title">
+      📳 Haptic Radar
+      <span style="font-size:.58rem;color:var(--muted);margin-left:auto;letter-spacing:1px">LIVE OBSTACLE INTENSITY</span>
+    </div>
+    <div class="haptic-meters">
+      <div class="hm">
+        <div class="hm-label">◀ Left Motor <span id="lPct">0%</span></div>
+        <div class="hm-bar"><div class="hm-fill" id="lBar" style="width:0%"></div></div>
+      </div>
+      <div class="hm">
+        <div class="hm-label">Right Motor ▶ <span id="rPct">0%</span></div>
+        <div class="hm-bar"><div class="hm-fill" id="rBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Camera telemetry -->
+<div class="cam-panel">
+  <div class="cam-box">
+    <div class="cam-stat"><span class="label">Camera</span><span class="value inactive" id="camStat">Offline</span></div>
+    <div class="cam-stat"><span class="label">Brightness</span><span class="value inactive" id="brightStat">—</span></div>
+    <div class="cam-stat"><span class="label">Motion</span><span class="value inactive" id="motionStat">None</span></div>
+    <div class="cam-stat"><span class="label">Face</span><span class="value inactive" id="faceStat">None</span></div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <span class="dog-emoji">🐕</span>
+  <div class="dog-info">
+    <h3>Good Pup</h3>
+    <p id="statusTxt">Not connected</p>
+  </div>
+</div>
+
+<div class="controls">
+
+  <!-- HAPTIC CONTROLS -->
+  <div class="card haptic-card disabled-overlay" id="hapticCard">
+    <div class="sec" style="color:var(--haptic)">📳 Haptic Obstacle Sense</div>
+    <div class="tog-row">
+      <label>Haptic feedback <span class="haptic-badge">MOTOR</span></label>
+      <button class="tog haptic-tog on" id="tHaptic" onclick="toggle('hapticEnabled',this)"></button>
+    </div>
+    <div class="sl-row">
+      <label style="font-size:.74rem">Sensitivity</label>
+      <input type="range" class="haptic-slider" min="1" max="5" step="1" value="3"
+             oninput="setHapticSens(+this.value);document.getElementById('sensV').textContent=['Low','Med-Low','Medium','Med-High','High'][this.value-1]">
+      <span class="sv hap" id="sensV">Medium</span>
+    </div>
+    <p style="font-size:.68rem;color:var(--muted);margin-top:.4rem;line-height:1.55">
+      Left motor buzzes when an obstacle enters the left half of the camera's view. Right motor for the right side. Intensity increases as the object fills more of the frame — stronger means closer.
+    </p>
+  </div>
+
+  <!-- MOOD -->
+  <div class="card disabled-overlay" id="moodCard">
+    <div class="sec">😊 Mood</div>
+    <div class="mood-grid">
+      <button class="mb active" onclick="setMood('normal',this)"><span class="em">😐</span>Normal</button>
+      <button class="mb" onclick="setMood('wide',this)"><span class="em">😳</span>Surprised</button>
+      <button class="mb" onclick="setMood('sleepy',this)"><span class="em">😪</span>Sleepy</button>
+      <button class="mb" onclick="setMood('angry',this)"><span class="em">😠</span>Fierce</button>
+      <button class="mb" onclick="setMood('squint',this)"><span class="em">🤨</span>Suspicious</button>
+      <button class="mb" onclick="setMood('heart',this)"><span class="em">🥰</span>Lovey</button>
+      <button class="mb" onclick="setMood('closed',this)"><span class="em">😴</span>Closed</button>
+      <button class="mb" onclick="setMood('derp',this)"><span class="em">🤪</span>Derpy</button>
+      <button class="mb" onclick="setMood('laser',this)"><span class="em">😤</span>Laser</button>
+    </div>
+  </div>
+
+  <!-- CAMERA VISION FEATURES -->
+  <div class="card disabled-overlay" id="camCard">
+    <div class="sec">📷 Camera Vision</div>
+    <div class="tog-row">
+      <label>Motion tracking <span class="cam-badge">CAM</span></label>
+      <button class="tog on" onclick="toggle('motionEnabled',this)"></button>
+    </div>
+    <div class="tog-row">
+      <label>Auto pupil dilation <span class="cam-badge">CAM</span></label>
+      <button class="tog on" onclick="toggle('lightEnabled',this)"></button>
+    </div>
+    <div class="tog-row">
+      <label>Face reaction <span class="cam-badge">CAM</span></label>
+      <button class="tog on" onclick="toggle('faceEnabled',this)"></button>
+    </div>
+  </div>
+
+  <!-- GAZE -->
+  <div class="card disabled-overlay" id="gazeCard">
+    <div class="sec">👁️ Manual Gaze Override</div>
+    <div class="joystick-area">
+      <div class="j-ring" id="jring"><div class="j-knob" id="jknob"></div></div>
+      <span class="j-lbl">DRAG · RELEASES BACK TO CAMERA TRACKING</span>
+    </div>
+  </div>
+
+  <!-- COLOR -->
+  <div class="card disabled-overlay" id="colorCard">
+    <div class="sec">🎨 Iris Color</div>
+    <div class="color-row">
+      <div class="sw active" style="background:#6b4226" onclick="setColor(107,66,38,160,96,48,this)"></div>
+      <div class="sw" style="background:#2a5298" onclick="setColor(26,58,122,74,122,204,this)"></div>
+      <div class="sw" style="background:#1a6b3a" onclick="setColor(15,74,42,58,154,90,this)"></div>
+      <div class="sw" style="background:#7b2d8b" onclick="setColor(90,26,106,154,74,170,this)"></div>
+      <div class="sw" style="background:#8b3a3a" onclick="setColor(106,26,26,170,90,90,this)"></div>
+      <div class="sw" style="background:#5a5a5a" onclick="setColor(51,51,51,136,136,136,this)"></div>
+      <div class="sw" style="background:#b8860b" onclick="setColor(160,112,0,212,168,0,this)"></div>
+      <div class="sw" style="background:#2e8b57" onclick="setColor(26,96,64,64,176,128,this)"></div>
+    </div>
+  </div>
+
+  <!-- ADJUSTMENTS -->
+  <div class="card disabled-overlay" id="adjCard">
+    <div class="sec">⚙️ Adjustments</div>
+    <div class="sl-row">
+      <label>Eye Size</label>
+      <input type="range" min="0.5" max="1.3" step="0.05" value="1"
+             oninput="send({eyeScale:+this.value});document.getElementById('szV').textContent=this.value">
+      <span class="sv" id="szV">1.0</span>
+    </div>
+    <div class="sl-row">
+      <label>Pupil Size</label>
+      <input type="range" min="0.4" max="1.6" step="0.05" value="1"
+             oninput="send({pupilScale:+this.value});document.getElementById('puV').textContent=this.value">
+      <span class="sv" id="puV">1.0</span>
+    </div>
+    <div class="sl-row">
+      <label>Blink Rate</label>
+      <input type="range" min="1" max="10" step="0.5" value="4"
+             oninput="send({blinkRate:+this.value});document.getElementById('blV').textContent=this.value+'s'">
+      <span class="sv" id="blV">4s</span>
+    </div>
+  </div>
+
+  <!-- OPTIONS -->
+  <div class="card disabled-overlay" id="optCard">
+    <div class="sec">🔧 Options</div>
+    <div class="tog-row"><label>Auto-blink</label><button class="tog on" onclick="toggle('autoBlink',this)"></button></div>
+    <div class="tog-row"><label>Wiggle gaze</label><button class="tog" onclick="toggle('wiggle',this)"></button></div>
+    <div class="tog-row"><label>Mirror eyes</label><button class="tog on" onclick="toggle('mirror',this)"></button></div>
+  </div>
+
+  <!-- QUICK ACTIONS -->
+  <div class="card disabled-overlay" id="qaCard">
+    <div class="sec">⚡ Quick Actions</div>
+    <div class="qa">
+      <button class="ab" onclick="send({action:'blink'})"><span class="em">😉</span>Force Blink</button>
+      <button class="ab" onclick="doSpin()"><span class="em">🌀</span>Spin Out</button>
+      <button class="ab" onclick="send({action:'dilate'})"><span class="em">🔦</span>Dilate</button>
+      <button class="ab" onclick="send({action:'alert'})"><span class="em">⚠️</span>Alert!</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="compat-note">
+  <div class="compat-box">
+    <strong>📱 Web Bluetooth:</strong> Chrome/Edge on Android · Chrome on desktop ·
+    iPhone: use <a href="https://apps.apple.com/app/bluefy/id1492822055" style="color:var(--teal)">Bluefy app</a>
+  </div>
+</div>
+
+<script>
+const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX      = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_TX      = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+let bleDevice=null,rxChar=null,txChar=null,connected=false;
+let cmdQueue=[],isSending=false;
+const encoder=new TextEncoder();
+const decoder=new TextDecoder();
+
+// Haptic sensitivity presets: maps 1-5 → HAPTIC_MIN_DENSITY override
+// We send this as a config param the firmware can use to scale its threshold
+const sensMap=[0.08,0.06,0.04,0.025,0.012];
+let hapticSens=3;
+
+function enqueue(obj){
+  if(cmdQueue.length>0)Object.assign(cmdQueue[cmdQueue.length-1],obj);
+  else cmdQueue.push({...obj});
+  flushQueue();
+}
+async function flushQueue(){
+  if(isSending||cmdQueue.length===0||!rxChar)return;
+  isSending=true;
+  try{const cmd=cmdQueue.shift();await rxChar.writeValueWithoutResponse(encoder.encode(JSON.stringify(cmd)+'\n'));}
+  catch(e){setConnStatus('⚠ Write error','err');}
+  isSending=false;
+  if(cmdQueue.length>0)setTimeout(flushQueue,20);
+}
+function send(obj){if(connected)enqueue(obj);}
+
+function setHapticSens(v){
+  hapticSens=v;
+  send({hapticSensitivity:sensMap[v-1]});
+}
+
+async function toggleConnect(){if(connected){disconnect();return;}await connectBLE();}
+async function connectBLE(){
+  if(!navigator.bluetooth){setConnStatus('Web Bluetooth not available','err');document.getElementById('connectBtn').className='error';return;}
+  setConnStatus('Scanning...','idle');
+  document.getElementById('connectBtn').textContent='🔍 Scanning...';
+  try{
+    bleDevice=await navigator.bluetooth.requestDevice({filters:[{name:'DoggleEyes'}],optionalServices:[NUS_SERVICE]});
+    bleDevice.addEventListener('gattserverdisconnected',onDisconnected);
+    const server=await bleDevice.gatt.connect();
+    const svc=await server.getPrimaryService(NUS_SERVICE);
+    rxChar=await svc.getCharacteristic(NUS_RX);
+    txChar=await svc.getCharacteristic(NUS_TX);
+    await txChar.startNotifications();
+    txChar.addEventListener('characteristicvaluechanged',onNotify);
+    onConnected();
+  }catch(e){
+    if(e.name!=='NotFoundError'){setConnStatus('Failed: '+e.message,'err');document.getElementById('connectBtn').className='error';document.getElementById('connectBtn').textContent='🔴 Retry';}
+    else{setConnStatus('Scan cancelled','idle');document.getElementById('connectBtn').className='idle';document.getElementById('connectBtn').textContent='🔵 Connect to DoggleEyes';}
+  }
+}
+function onConnected(){
+  connected=true;
+  setConnStatus('✓ Connected — '+bleDevice.name,'ok');
+  document.getElementById('connectBtn').textContent='🟢 Connected — tap to disconnect';
+  document.getElementById('connectBtn').className='conn';
+  document.getElementById('statusTxt').textContent='BLE connected';
+  document.querySelectorAll('.disabled-overlay').forEach(el=>el.classList.remove('disabled-overlay'));
+}
+function onDisconnected(){
+  connected=false;rxChar=null;txChar=null;
+  setConnStatus('Disconnected','idle');
+  document.getElementById('connectBtn').textContent='🔵 Reconnect to DoggleEyes';
+  document.getElementById('connectBtn').className='idle';
+  document.getElementById('statusTxt').textContent='Not connected';
+  ['hapticCard','moodCard','camCard','gazeCard','colorCard','adjCard','optCard','qaCard'].forEach(id=>document.getElementById(id).classList.add('disabled-overlay'));
+  setHapticBars(0,0);
+}
+function disconnect(){if(bleDevice&&bleDevice.gatt.connected)bleDevice.gatt.disconnect();}
+function setConnStatus(msg,cls){const el=document.getElementById('bleStatus');el.textContent=msg;el.className='ble-status '+cls;}
+
+// BLE telemetry
+let rxPartial='';
+function onNotify(evt){
+  rxPartial+=decoder.decode(evt.target.value);
+  if(rxPartial.length>2048){rxPartial='';return;}
+  let nl=rxPartial.indexOf('\n');
+  while(nl!==-1){
+    const line=rxPartial.substring(0,nl).trim();
+    rxPartial=rxPartial.substring(nl+1);
+    try{const d=JSON.parse(line);handleTelemetry(d);}catch(e){console.warn('[BLE] Bad JSON:',line);}
+    nl=rxPartial.indexOf('\n');
+  }
+}
+function handleTelemetry(d){
+  if(d.camera!==undefined){const el=document.getElementById('camStat');el.textContent=d.camera?'Active':'Offline';el.className='value '+(d.camera?'active':'inactive');}
+  if(d.brightness!==undefined){document.getElementById('brightStat').textContent=d.brightness+'%';document.getElementById('brightStat').className='value active';}
+  if(d.motion!==undefined){const el=document.getElementById('motionStat');el.textContent=d.motion?'Detected':'None';el.className='value '+(d.motion?'alert':'inactive');}
+  if(d.face!==undefined){const el=document.getElementById('faceStat');el.textContent=d.face?'Nearby':'None';el.className='value '+(d.face?'active':'inactive');}
+  if(d.hapticL!==undefined&&d.hapticR!==undefined){setHapticBars(d.hapticL,d.hapticR);}
+  if(d.mood){document.getElementById('statusTxt').textContent='Mood: '+d.mood;}
+}
+
+function setHapticBars(l,r){
+  const lp=Math.round(l/255*100),rp=Math.round(r/255*100);
+  document.getElementById('lBar').style.width=lp+'%';
+  document.getElementById('rBar').style.width=rp+'%';
+  document.getElementById('lPct').textContent=lp+'%';
+  document.getElementById('rPct').textContent=rp+'%';
+  document.getElementById('lBar').classList.toggle('active',lp>5);
+  document.getElementById('rBar').classList.toggle('active',rp>5);
+}
+
+// Simulate haptic bars for demo when not connected (remove in production)
+// setInterval(()=>{if(!connected)setHapticBars(Math.random()*200,Math.random()*200);},200);
+
+function setMood(m,btn){document.querySelectorAll('.mb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');send({mood:m});}
+function setColor(or_,og,ob,ir,ig,ib,sw){document.querySelectorAll('.sw').forEach(s=>s.classList.remove('active'));sw.classList.add('active');send({irisOuter:{r:or_,g:og,b:ob},irisInner:{r:ir,g:ig,b:ib}});}
+function toggle(key,btn){send({[key]:btn.classList.toggle('on')});}
+async function doSpin(){if(!connected)return;for(let a=0;a<720;a+=20){send({gazeX:Math.cos(a*Math.PI/180)*0.4,gazeY:Math.sin(a*Math.PI/180)*0.4});await new Promise(r=>setTimeout(r,30));}send({gazeX:0,gazeY:0});}
+
+// Joystick
+const jring=document.getElementById('jring'),jknob=document.getElementById('jknob');
+const maxR=40;let jactive=false;
+function jPos(e){const rect=jring.getBoundingClientRect();const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;let dx=(e.touches?e.touches[0].clientX:e.clientX)-cx,dy=(e.touches?e.touches[0].clientY:e.clientY)-cy;const d=Math.sqrt(dx*dx+dy*dy);if(d>maxR){dx=dx/d*maxR;dy=dy/d*maxR;}return{dx,dy};}
+jring.addEventListener('mousedown',()=>jactive=true);
+jring.addEventListener('touchstart',e=>{jactive=true;e.preventDefault();},{passive:false});
+document.addEventListener('mousemove',e=>{if(!jactive)return;const{dx,dy}=jPos(e);jknob.style.setProperty('--jx',dx+'px');jknob.style.setProperty('--jy',dy+'px');send({gazeX:dx/maxR,gazeY:dy/maxR});});
+document.addEventListener('touchmove',e=>{if(!jactive)return;e.preventDefault();const{dx,dy}=jPos(e);jknob.style.setProperty('--jx',dx+'px');jknob.style.setProperty('--jy',dy+'px');send({gazeX:dx/maxR,gazeY:dy/maxR});},{passive:false});
+function jRelease(){if(!jactive)return;jactive=false;jknob.style.setProperty('--jx','0px');jknob.style.setProperty('--jy','0px');send({gazeX:0,gazeY:0});}
+document.addEventListener('mouseup',jRelease);
+document.addEventListener('touchend',jRelease);
+</script>
+</body>
+</html>

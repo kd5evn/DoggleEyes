@@ -141,7 +141,8 @@ void processCommand(const char* json) {
   if (doc.containsKey("motionEnabled"))  state.motionEnabled = doc["motionEnabled"].as<bool>();
   if (doc.containsKey("lightEnabled"))   state.lightEnabled  = doc["lightEnabled"].as<bool>();
   if (doc.containsKey("faceEnabled"))    state.faceEnabled   = doc["faceEnabled"].as<bool>();
-  if (doc.containsKey("hapticEnabled"))  hapticState.enabled = doc["hapticEnabled"].as<bool>();
+  if (doc.containsKey("hapticEnabled"))     hapticState.enabled    = doc["hapticEnabled"].as<bool>();
+  if (doc.containsKey("hapticSensitivity")) hapticState.minDensity = constrain(doc["hapticSensitivity"].as<float>(), 0.005f, 0.30f);
 
   if (doc.containsKey("irisOuter")) {
     state.irisOuter = tftPtr->color565((uint8_t)doc["irisOuter"]["r"],

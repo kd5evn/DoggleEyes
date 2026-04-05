@@ -70,6 +70,7 @@ struct HapticState {
   bool  enabled        = true;
   uint8_t leftPWM      = 0;
   uint8_t rightPWM     = 0;
+  float minDensity     = HAPTIC_MIN_DENSITY;  // tunable via BLE hapticSensitivity command
 };
 
 // Declare extern — defined in DoggleEyes.ino
@@ -165,10 +166,12 @@ inline void updateHaptic(
     const uint8_t* prev,
     int w, int h)
 {
-  // Check if haptics are enabled (read under mutex)
-  bool enabled;
+  // Check if haptics are enabled and read current sensitivity (under mutex)
+  bool  enabled;
+  float minDensity;
   portENTER_CRITICAL(&eyeMux);
-  enabled = hapticState.enabled;
+  enabled    = hapticState.enabled;
+  minDensity = hapticState.minDensity;
   portEXIT_CRITICAL(&eyeMux);
 
   if (!enabled) {
@@ -185,9 +188,9 @@ inline void updateHaptic(
   float rawLeft  = computeHalfFrameDensity(cur, prev, w, h, 0,    midX);
   float rawRight = computeHalfFrameDensity(cur, prev, w, h, midX, w);
 
-  // Apply minimum density gate — ignore noise below threshold
-  if (rawLeft  < HAPTIC_MIN_DENSITY) rawLeft  = 0.0f;
-  if (rawRight < HAPTIC_MIN_DENSITY) rawRight = 0.0f;
+  // Apply minimum density gate — ignore noise below threshold (BLE-tunable)
+  if (rawLeft  < minDensity) rawLeft  = 0.0f;
+  if (rawRight < minDensity) rawRight = 0.0f;
 
   // Exponential smoothing (running average with previous intensity)
   portENTER_CRITICAL(&eyeMux);
