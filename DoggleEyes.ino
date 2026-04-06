@@ -298,13 +298,6 @@ void setup() {
   // Initialise all state — must be done here, not at global scope
   initState();
 
-  // ── SPI bus — pre-initialise before TFT_eSPI::init() ─────
-  // On ESP32-S3, TFT_eSPI defaults to VSPI which maps to an invalid
-  // SPI register base, causing StoreProhibited at address 0x10.
-  // Pre-claiming HSPI via SPI.begin() (matching USE_HSPI_PORT in
-  // User_Setup.h) prevents the NULL spi_device handle crash.
-  SPI.begin(TFT_SCLK, -1, TFT_MOSI, -1);
-
   // ── TFT — create on heap inside setup() ───────────────
   tftPtr = new TFT_eSPI();
 
@@ -312,19 +305,29 @@ void setup() {
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
 
-  // Reset both displays together
+  // Hardware reset both displays together once.
+  // TFT_RST=-1 in User_Setup.h so TFT_eSPI never pulses RST internally —
+  // if it did, the second init() call would reset both displays, leaving
+  // the first uninitialised.
   pinMode(6, OUTPUT);
-  digitalWrite(6, LOW);  delay(10);
-  digitalWrite(6, HIGH); delay(120);
+  digitalWrite(6, LOW);  delay(15);
+  digitalWrite(6, HIGH); delay(150);
 
-  // Init both displays simultaneously — both CS LOW so both receive the
-  // same GC9A01 init sequence and fillScreen in one pass. Calling init()
-  // twice re-initialises the SPI bus and breaks the first display.
-  digitalWrite(CS_LEFT,  LOW);
-  digitalWrite(CS_RIGHT, LOW);
+  // Init each display separately. With TFT_RST=-1, the second init() call
+  // only re-sends the GC9A01 command sequence — it does not reset the SPI
+  // bus or touch RST, so the first display stays initialised.
+  selectDisplay(true);   // right display
   tftPtr->init();
+  tftPtr->setSwapBytes(true);   // required for correct GC9A01 colours on ESP32
   tftPtr->setRotation(0);
   tftPtr->fillScreen(TFT_BLACK);
+
+  selectDisplay(false);  // left display
+  tftPtr->init();
+  tftPtr->setSwapBytes(true);
+  tftPtr->setRotation(0);
+  tftPtr->fillScreen(TFT_BLACK);
+
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
   Serial.println("[Init] Displays OK.");
@@ -468,6 +471,9 @@ void loop() {
   selectDisplay(true);
   drawEye(s.mirror ? -gx : gx, gy, true, s.blinkPhase, effectiveMood,
           s.eyeScale, pupilMul, s.irisOuter, s.irisInner);
+  // Deassert both CS at end of frame — leaves bus idle
+  digitalWrite(CS_LEFT,  HIGH);
+  digitalWrite(CS_RIGHT, HIGH);
 
   // ── BLE status ping (~every 3s) ───────────────────────
   static unsigned long lastPing = 0;

@@ -46,5 +46,5 @@
 // ── SPI speed ────────────────────────────────────────────────
 // Note: camera uses its own parallel interface (not SPI),
 // so there is no bus conflict. Display SPI runs independently.
-#define SPI_FREQUENCY       27000000   // 27 MHz — conservative start; try 40 MHz once working
+#define SPI_FREQUENCY       40000000   // 40 MHz — GC9A01 supports up to 80 MHz
 #define SPI_READ_FREQUENCY   5000000
