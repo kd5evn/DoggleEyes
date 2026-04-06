@@ -312,17 +312,21 @@ void setup() {
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
 
-  // Reset both displays together once — TFT_RST=-1 so TFT_eSPI won't
-  // pulse RST internally (which would reset both on every init() call,
-  // leaving the first display uninitialised after the second init()).
+  // Reset both displays together
   pinMode(6, OUTPUT);
   digitalWrite(6, LOW);  delay(10);
   digitalWrite(6, HIGH); delay(120);
 
-  selectDisplay(true);
-  tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
-  selectDisplay(false);
-  tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
+  // Init both displays simultaneously — both CS LOW so both receive the
+  // same GC9A01 init sequence and fillScreen in one pass. Calling init()
+  // twice re-initialises the SPI bus and breaks the first display.
+  digitalWrite(CS_LEFT,  LOW);
+  digitalWrite(CS_RIGHT, LOW);
+  tftPtr->init();
+  tftPtr->setRotation(0);
+  tftPtr->fillScreen(TFT_BLACK);
+  digitalWrite(CS_LEFT,  HIGH);
+  digitalWrite(CS_RIGHT, HIGH);
   Serial.println("[Init] Displays OK.");
 
   // ── Haptic motors ──────────────────────────────────────
