@@ -24,7 +24,8 @@
 #define TFT_SCLK   5    // ← CHANGED (was 12, conflicts with camera Y7)
 #define TFT_CS    -1    // Disabled — CS managed manually via selectDisplay()
 #define TFT_DC     3    // ← CHANGED (was 7)
-#define TFT_RST    6    //   unchanged
+#define TFT_RST   -1    // Disabled — RST pulsed manually in setup() so both
+                        // displays reset together before independent init
 
 // Right eye CS = GPIO 2  (controlled manually in DoggleEyes.ino)
 

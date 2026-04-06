@@ -312,6 +312,13 @@ void setup() {
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
 
+  // Reset both displays together once — TFT_RST=-1 so TFT_eSPI won't
+  // pulse RST internally (which would reset both on every init() call,
+  // leaving the first display uninitialised after the second init()).
+  pinMode(6, OUTPUT);
+  digitalWrite(6, LOW);  delay(10);
+  digitalWrite(6, HIGH); delay(120);
+
   selectDisplay(true);
   tftPtr->init(); tftPtr->setRotation(0); tftPtr->fillScreen(TFT_BLACK);
   selectDisplay(false);
