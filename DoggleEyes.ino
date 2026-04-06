@@ -328,13 +328,11 @@ void setup() {
   // bus or touch RST, so the first display stays initialised.
   selectDisplay(true);   // right display
   tftPtr->init();
-  tftPtr->setSwapBytes(true);   // required for correct GC9A01 colours on ESP32
   tftPtr->setRotation(0);
   tftPtr->fillScreen(TFT_BLACK);
 
   selectDisplay(false);  // left display
   tftPtr->init();
-  tftPtr->setSwapBytes(true);
   tftPtr->setRotation(0);
   tftPtr->fillScreen(TFT_BLACK);
 
