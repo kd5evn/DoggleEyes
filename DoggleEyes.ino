@@ -31,6 +31,16 @@
 #include <ArduinoJson.h>
 #include <TFT_eSPI.h>
 #include <SPI.h>
+
+// ── Compile-time check: catch stale User_Setup.h in library folder ──
+// If this fails: copy User_Setup.h from this sketch folder to
+// Arduino/libraries/TFT_eSPI/User_Setup.h and recompile.
+#ifndef DOGGLEEYES_SETUP_ID
+  #error "User_Setup.h not copied to TFT_eSPI library folder!"
+#endif
+#if DOGGLEEYES_SETUP_ID != 42
+  #error "Stale User_Setup.h in TFT_eSPI library folder — copy the latest from sketch folder."
+#endif
 #include "esp_camera.h"
 #include "camera_config.h"
 #include "vision.h"
@@ -330,6 +340,18 @@ void setup() {
 
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
+
+  // ── Boot test pattern ─────────────────────────────────
+  // Flash each display a solid colour so wiring can be confirmed
+  // visually before the main loop starts.
+  // RIGHT = green, LEFT = red for 600 ms each.
+  selectDisplay(true);  tftPtr->fillScreen(0x07E0); // right = green
+  selectDisplay(false); tftPtr->fillScreen(0xF800); // left  = red
+  delay(600);
+  selectDisplay(true);  tftPtr->fillScreen(TFT_BLACK);
+  selectDisplay(false); tftPtr->fillScreen(TFT_BLACK);
+  digitalWrite(CS_LEFT, HIGH); digitalWrite(CS_RIGHT, HIGH);
+
   Serial.println("[Init] Displays OK.");
 
   // ── Haptic motors ──────────────────────────────────────

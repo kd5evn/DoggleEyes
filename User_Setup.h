@@ -1,6 +1,11 @@
 // ============================================================
 //  User_Setup.h  —  TFT_eSPI config for DoggleEyes v3.0
 //
+//  !! THIS FILE MUST BE COPIED TO: !!
+//  Arduino/libraries/TFT_eSPI/User_Setup.h
+//  after every change. The sketch folder copy is the source of
+//  truth; the library folder copy is what gets compiled.
+//
 //  !! IMPORTANT CHANGE FROM v1/v2 !!
 //  The XIAO ESP32-S3 Sense camera daughterboard occupies
 //  GPIO 11, 12, 13, 14, 15, 16, 17, 18, 38, 39, 40, 47, 48.
@@ -14,6 +19,10 @@
 //    DC   : GPIO 3   (was 7)
 //    RST  : GPIO 6   (unchanged)
 // ============================================================
+
+// Sentinel — checked at compile time in DoggleEyes.ino to confirm
+// this file (not a stale copy) is in the TFT_eSPI library folder.
+#define DOGGLEEYES_SETUP_ID 42
 
 #define GC9A01_DRIVER
 #define TFT_WIDTH  240
@@ -46,5 +55,7 @@
 // ── SPI speed ────────────────────────────────────────────────
 // Note: camera uses its own parallel interface (not SPI),
 // so there is no bus conflict. Display SPI runs independently.
-#define SPI_FREQUENCY       40000000   // 40 MHz — GC9A01 supports up to 80 MHz
+// GPIO matrix routing (non-native pins) caps reliable SPI at ~20 MHz.
+// Raise to 40 MHz only once displays are confirmed working.
+#define SPI_FREQUENCY       20000000
 #define SPI_READ_FREQUENCY   5000000
