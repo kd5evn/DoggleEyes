@@ -364,6 +364,7 @@ function setConnStatus(msg,cls){const el=document.getElementById('bleStatus');el
 // BLE telemetry + binary camera preview
 let rxPartial='';
 let imgBuf=null,imgW=0,imgH=0,imgPos=0,previewFrameCount=0,previewT0=0;
+let lastHapticL=0,lastHapticR=0;
 
 function onNotify(evt){
   const dv=evt.target.value;
@@ -412,6 +413,27 @@ function renderPreview(){
     }
   }
   ctx.putImageData(id,0,0);
+
+  // ── Haptic region overlay ────────────────────────��─────
+  const midX=imgW/2;  // divides left/right haptic zones (mirrors haptic_vision.h midX = W/2)
+
+  // Intensity fills — opacity proportional to motor PWM (0-230 max)
+  const lAlpha=Math.min(0.55,(lastHapticL/230)*0.7);
+  const rAlpha=Math.min(0.55,(lastHapticR/230)*0.7);
+  if(lAlpha>0.02){ctx.fillStyle=`rgba(255,120,0,${lAlpha})`;ctx.fillRect(0,0,midX,imgH);}
+  if(rAlpha>0.02){ctx.fillStyle=`rgba(255,120,0,${rAlpha})`;ctx.fillRect(midX,0,midX,imgH);}
+
+  // Centre divider line
+  ctx.strokeStyle='rgba(255,220,0,0.85)';
+  ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(midX,0);ctx.lineTo(midX,imgH);ctx.stroke();
+
+  // Region labels
+  ctx.fillStyle='rgba(255,220,0,0.9)';
+  ctx.font='4px monospace';
+  ctx.fillText('L',2,imgH-2);
+  ctx.fillText('R',midX+2,imgH-2);
+
   previewFrameCount++;
   const now=Date.now();
   if(previewT0===0)previewT0=now;
@@ -433,7 +455,7 @@ function handleTelemetry(d){
   if(d.brightness!==undefined){document.getElementById('brightStat').textContent=d.brightness+'%';document.getElementById('brightStat').className='value active';}
   if(d.motion!==undefined){const el=document.getElementById('motionStat');el.textContent=d.motion?'Detected':'None';el.className='value '+(d.motion?'alert':'inactive');}
   if(d.face!==undefined){const el=document.getElementById('faceStat');el.textContent=d.face?'Nearby':'None';el.className='value '+(d.face?'active':'inactive');}
-  if(d.hapticL!==undefined&&d.hapticR!==undefined){setHapticBars(d.hapticL,d.hapticR);}
+  if(d.hapticL!==undefined&&d.hapticR!==undefined){lastHapticL=d.hapticL;lastHapticR=d.hapticR;setHapticBars(d.hapticL,d.hapticR);}
   if(d.mood){document.getElementById('statusTxt').textContent='Mood: '+d.mood;}
 }
 
