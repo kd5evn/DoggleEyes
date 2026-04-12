@@ -69,7 +69,8 @@ TFT_eSprite* spr    = nullptr;
 NimBLEServer*         pServer = nullptr;
 NimBLECharacteristic* pTxChar = nullptr;
 NimBLECharacteristic* pRxChar = nullptr;
-bool deviceConnected = false;
+bool             deviceConnected   = false;
+volatile bool    blePreviewEnabled = false;  // BLE camera preview (40×30 grayscale)
 
 // ── Mutex (plain — no constructor, safe as global) ───────────
 portMUX_TYPE eyeMux = portMUX_INITIALIZER_UNLOCKED;
@@ -132,10 +133,8 @@ inline void initState() {
   state.irisInner      = 0xA145;
   state.eyeScale       = 1.0f;
   state.pupilScale     = 1.0f;
-  state.autoBlink      = false;  // off by default — blink push takes 46ms and causes
-                                 // a visible frame sweep; re-enable via BLE {"autoBlink":true}
-                                 // once a faster SPI or TE-sync solution is in place
-  state.blinkRate      = 6.0f;  // seconds between blinks when autoBlink is on
+  state.autoBlink      = true;
+  state.blinkRate      = 7.5f;
   state.mirror         = true;
   state.motionEnabled  = true;
   state.lightEnabled   = true;
@@ -180,6 +179,7 @@ void processCommand(const char* json) {
   if (doc.containsKey("faceEnabled"))    state.faceEnabled   = doc["faceEnabled"].as<bool>();
   if (doc.containsKey("hapticEnabled"))     hapticState.enabled    = doc["hapticEnabled"].as<bool>();
   if (doc.containsKey("hapticSensitivity")) hapticState.minDensity = constrain(doc["hapticSensitivity"].as<float>(), 0.005f, 0.30f);
+  if (doc.containsKey("preview"))           blePreviewEnabled      = doc["preview"].as<bool>();
 
   if (doc.containsKey("irisOuter")) {
     state.irisOuter = tftPtr->color565((uint8_t)doc["irisOuter"]["r"],
@@ -293,6 +293,50 @@ void visionTask(void* param) {
 
     updateHaptic(cur, prevFrame, W, H);
 
+    // ── BLE camera preview (diagnostic) ──────────────────
+    // Downsample 160×120 → 40×30 and send as binary BLE notifications.
+    // Protocol: first chunk = [0x01, W, H, pixels...],
+    //           subsequent  = [0x02, pixels...]
+    // HTML reconstructs and renders to a canvas element.
+    if (blePreviewEnabled && deviceConnected && pTxChar && !streamActive) {
+      static unsigned long lastPreview = 0;
+      if (millis() - lastPreview >= 333) {  // max ~3 fps — keeps BLE stack comfortable
+        lastPreview = millis();
+        const int PW = 40, PH = 30;
+        const int TOTAL = PW * PH;            // 1200 bytes
+        const int PAYLOAD = 176;              // pixels per BLE packet
+        uint8_t small[TOTAL];
+
+        // 4×4 box filter downsample
+        for (int py = 0; py < PH; py++) {
+          for (int px = 0; px < PW; px++) {
+            uint32_t sum = 0;
+            for (int dy = 0; dy < 4; dy++)
+              for (int dx = 0; dx < 4; dx++)
+                sum += cur[(py*4+dy) * W + (px*4+dx)];
+            small[py*PW + px] = (uint8_t)(sum >> 4);  // divide by 16
+          }
+        }
+
+        // Chunk and notify
+        int sent = 0;
+        bool isFirst = true;
+        while (sent < TOTAL) {
+          int hlen = isFirst ? 3 : 1;
+          int plen = min(PAYLOAD, TOTAL - sent);
+          uint8_t buf[PAYLOAD + 3];
+          buf[0] = isFirst ? 0x01 : 0x02;
+          if (isFirst) { buf[1] = (uint8_t)PW; buf[2] = (uint8_t)PH; }
+          memcpy(buf + hlen, small + sent, plen);
+          pTxChar->setValue(buf, hlen + plen);
+          pTxChar->notify();
+          sent += plen;
+          if (sent < TOTAL) vTaskDelay(pdMS_TO_TICKS(20));  // pace BLE stack
+          isFirst = false;
+        }
+      }
+    }
+
     memcpy(prevFrame, cur, W * H);
     esp_camera_fb_return(fb);
     vTaskDelay(pdMS_TO_TICKS(VISION_INTERVAL_MS));
@@ -384,6 +428,7 @@ void setup() {
   // Core 0 resources. Starting camera first has been observed to silently
   // prevent BLE from advertising on ESP32-S3.
   NimBLEDevice::init("DoggleEyes");
+  NimBLEDevice::setMTU(512);          // request larger MTU for BLE camera preview chunks
   NimBLEDevice::setPower(ESP_PWR_LVL_P9);
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());

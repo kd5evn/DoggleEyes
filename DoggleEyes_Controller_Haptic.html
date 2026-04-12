@@ -249,6 +249,20 @@ input[type=range].haptic-slider::-webkit-slider-thumb{background:var(--haptic)}
     <div class="tog-row"><label>Mirror eyes</label><button class="tog on" onclick="toggle('mirror',this)"></button></div>
   </div>
 
+  <!-- DIAGNOSTICS -->
+  <div class="card disabled-overlay" id="diagCard">
+    <div class="sec">🔬 Diagnostics</div>
+    <div class="tog-row">
+      <label>Camera Preview (BLE)</label>
+      <button class="tog" id="previewTog" onclick="togglePreview(this)"></button>
+    </div>
+    <div id="previewPanel" style="display:none;margin-top:.8rem">
+      <canvas id="previewCanvas" width="40" height="30"
+              style="width:100%;image-rendering:pixelated;border-radius:8px;background:#000;border:1px solid #333"></canvas>
+      <p style="font-size:.62rem;color:var(--muted);text-align:center;margin-top:.35rem" id="previewInfo">Waiting for first frame…</p>
+    </div>
+  </div>
+
   <!-- QUICK ACTIONS -->
   <div class="card disabled-overlay" id="qaCard">
     <div class="sec">⚡ Quick Actions</div>
@@ -338,16 +352,41 @@ function onDisconnected(){
   document.getElementById('connectBtn').textContent='🔵 Reconnect to DoggleEyes';
   document.getElementById('connectBtn').className='idle';
   document.getElementById('statusTxt').textContent='Not connected';
-  ['hapticCard','moodCard','camCard','gazeCard','colorCard','adjCard','optCard','qaCard'].forEach(id=>document.getElementById(id).classList.add('disabled-overlay'));
+  ['hapticCard','moodCard','camCard','gazeCard','colorCard','adjCard','optCard','qaCard','diagCard'].forEach(id=>document.getElementById(id).classList.add('disabled-overlay'));
+  // Reset preview toggle on disconnect
+  const pt=document.getElementById('previewTog');if(pt)pt.classList.remove('tog-on');
+  document.getElementById('previewPanel').style.display='none';
   setHapticBars(0,0);
 }
 function disconnect(){if(bleDevice&&bleDevice.gatt.connected)bleDevice.gatt.disconnect();}
 function setConnStatus(msg,cls){const el=document.getElementById('bleStatus');el.textContent=msg;el.className='ble-status '+cls;}
 
-// BLE telemetry
+// BLE telemetry + binary camera preview
 let rxPartial='';
+let imgBuf=null,imgW=0,imgH=0,imgPos=0,previewFrameCount=0,previewT0=0;
+
 function onNotify(evt){
-  rxPartial+=decoder.decode(evt.target.value);
+  const dv=evt.target.value;
+  if(!dv||dv.byteLength===0)return;
+  const first=dv.getUint8(0);
+
+  // 0x01 = frame start  [0x01, W, H, pixels...]
+  if(first===0x01){
+    imgW=dv.getUint8(1);imgH=dv.getUint8(2);
+    imgBuf=new Uint8Array(imgW*imgH);imgPos=0;
+    for(let i=3;i<dv.byteLength&&imgPos<imgBuf.length;i++)imgBuf[imgPos++]=dv.getUint8(i);
+    if(imgPos>=imgBuf.length)renderPreview();
+    return;
+  }
+  // 0x02 = continuation [0x02, pixels...]
+  if(first===0x02&&imgBuf){
+    for(let i=1;i<dv.byteLength&&imgPos<imgBuf.length;i++)imgBuf[imgPos++]=dv.getUint8(i);
+    if(imgPos>=imgBuf.length)renderPreview();
+    return;
+  }
+
+  // Default: JSON text path
+  rxPartial+=decoder.decode(dv);
   if(rxPartial.length>2048){rxPartial='';return;}
   let nl=rxPartial.indexOf('\n');
   while(nl!==-1){
@@ -356,6 +395,34 @@ function onNotify(evt){
     try{const d=JSON.parse(line);handleTelemetry(d);}catch(e){console.warn('[BLE] Bad JSON:',line);}
     nl=rxPartial.indexOf('\n');
   }
+}
+
+function renderPreview(){
+  const c=document.getElementById('previewCanvas');
+  if(!c||!imgBuf)return;
+  c.width=imgW;c.height=imgH;
+  const ctx=c.getContext('2d');
+  const id=ctx.createImageData(imgW,imgH);
+  for(let i=0;i<imgBuf.length;i++){
+    const v=imgBuf[i];
+    id.data[i*4]=v;id.data[i*4+1]=v;id.data[i*4+2]=v;id.data[i*4+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  previewFrameCount++;
+  const now=Date.now();
+  if(previewT0===0)previewT0=now;
+  const fps=previewFrameCount>1?((previewFrameCount-1)/((now-previewT0)/1000)).toFixed(1):'--';
+  const el=document.getElementById('previewInfo');
+  if(el)el.textContent=fps+' fps · '+imgW+'×'+imgH+' · frame '+previewFrameCount;
+  imgBuf=null;
+}
+
+function togglePreview(btn){
+  const on=btn.classList.toggle('tog-on');
+  document.getElementById('previewPanel').style.display=on?'block':'none';
+  if(on){previewFrameCount=0;previewT0=0;}
+  else{imgBuf=null;}
+  send({preview:on});
 }
 function handleTelemetry(d){
   if(d.camera!==undefined){const el=document.getElementById('camStat');el.textContent=d.camera?'Active':'Offline';el.className='value '+(d.camera?'active':'inactive');}
