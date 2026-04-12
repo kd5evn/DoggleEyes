@@ -58,7 +58,11 @@
 
 // ── TFT object — pointer so constructor runs inside setup() ──
 // Global TFT_eSPI construction causes StoreProhibited on ESP32-S3
-TFT_eSPI* tftPtr = nullptr;
+TFT_eSPI*    tftPtr = nullptr;
+// ── Sprite framebuffer — eliminates rolling-shutter refresh ──
+// Eye is drawn to this 240×240 PSRAM buffer, then pushed to the
+// display as one continuous SPI burst (no mid-frame partial updates).
+TFT_eSprite* spr    = nullptr;
 
 // ── BLE globals ───────────────────────────────────────────────
 NimBLEServer*         pServer = nullptr;
@@ -127,8 +131,10 @@ inline void initState() {
   state.irisInner      = 0xA145;
   state.eyeScale       = 1.0f;
   state.pupilScale     = 1.0f;
-  state.autoBlink      = true;
-  state.blinkRate      = 4.0f;
+  state.autoBlink      = false;  // off by default — blink push takes 46ms and causes
+                                 // a visible frame sweep; re-enable via BLE {"autoBlink":true}
+                                 // once a faster SPI or TE-sync solution is in place
+  state.blinkRate      = 6.0f;  // seconds between blinks when autoBlink is on
   state.mirror         = true;
   state.motionEnabled  = true;
   state.lightEnabled   = true;
@@ -293,8 +299,12 @@ void visionTask(void* param) {
 //  DISPLAY HELPERS
 // ─────────────────────────────────────────────────────────────
 void selectDisplay(bool right) {
-  digitalWrite(right ? CS_LEFT  : CS_RIGHT, HIGH);
-  digitalWrite(right ? CS_RIGHT : CS_LEFT,  LOW);
+  tftPtr->endWrite();               // flush any pending SPI transaction
+  digitalWrite(CS_LEFT,  HIGH);    // deassert BOTH before transitioning
+  digitalWrite(CS_RIGHT, HIGH);
+  delayMicroseconds(10);           // GPIO matrix propagation settle (~4 cycles @240MHz = 17ns, but RC on lines needs more)
+  digitalWrite(right ? CS_RIGHT : CS_LEFT, LOW);
+  delayMicroseconds(5);            // CS assert settle before first SPI clock
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -310,6 +320,15 @@ void setup() {
 
   // ── TFT — create on heap inside setup() ───────────────
   tftPtr = new TFT_eSPI();
+
+  // ── Sprite framebuffer (240×240 × 2 bytes = 115 kB in PSRAM) ─
+  spr = new TFT_eSprite(tftPtr);
+  spr->setColorDepth(16);
+  if (!spr->createSprite(240, 240)) {
+    Serial.println("[Sprite] FAILED — check board settings: PSRAM must be OPI PSRAM.");
+    while (true) delay(1000);
+  }
+  Serial.println("[Sprite] 240x240 framebuffer allocated in PSRAM.");
 
   // ── Displays ──────────────────────────────────────────
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
@@ -354,9 +373,37 @@ void setup() {
 
   // ── Haptic motors ──────────────────────────────────────
   hapticInit();
-  // hapticTest(); // uncomment to test motors at boot
 
-  // ── Camera ────────────────────────────────────────────
+  // ── BLE — init BEFORE camera ───────────────────────────
+  // NimBLE and esp_camera both use Core 0. Starting BLE first gives the
+  // NimBLE stack time to stabilise before the camera task competes for
+  // Core 0 resources. Starting camera first has been observed to silently
+  // prevent BLE from advertising on ESP32-S3.
+  NimBLEDevice::init("DoggleEyes");
+  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+  pServer = NimBLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
+  NimBLEService* pSvc = pServer->createService(NUS_SERVICE_UUID);
+  pTxChar = pSvc->createCharacteristic(NUS_TX_UUID, NIMBLE_PROPERTY::NOTIFY);
+  pRxChar = pSvc->createCharacteristic(NUS_RX_UUID,
+              NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  pRxChar->setCallbacks(new RxCallbacks());
+  pSvc->start();
+  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
+  pAdv->addServiceUUID(NUS_SERVICE_UUID);
+  pAdv->setMinInterval(32);          // 20 ms
+  pAdv->setMaxInterval(64);          // 40 ms
+  bool advOK = NimBLEDevice::startAdvertising();
+  Serial.printf("[BLE] startAdvertising() = %s\n", advOK ? "OK" : "FAILED");
+  Serial.printf("[BLE] MAC address  : %s\n", NimBLEDevice::getAddress().toString().c_str());
+  Serial.printf("[BLE] Service UUID : %s\n", NUS_SERVICE_UUID);
+  Serial.printf("[BLE] RX char UUID : %s\n", NUS_RX_UUID);
+  Serial.printf("[BLE] TX char UUID : %s\n", NUS_TX_UUID);
+  Serial.printf("[BLE] Adv name     : DoggleEyes\n");
+  Serial.printf("[BLE] Adv interval : 20-40 ms\n");
+  if (advOK) Serial.println("[BLE] Advertising as 'DoggleEyes' — visible in nRF Connect now.");
+
+  // ── Camera — init AFTER BLE ────────────────────────────
   camera_config_t camCfg = buildCameraConfig();
   esp_err_t err = esp_camera_init(&camCfg);
   if (err != ESP_OK) {
@@ -382,22 +429,20 @@ void setup() {
     xTaskCreatePinnedToCore(visionTask, "VisionTask", 8192, NULL, 1, NULL, 0);
   }
 
-  // ── BLE ───────────────────────────────────────────────
-  NimBLEDevice::init("DoggleEyes");
-  NimBLEDevice::setPower(ESP_PWR_LVL_P9);
-  pServer = NimBLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
-  NimBLEService* pSvc = pServer->createService(NUS_SERVICE_UUID);
-  pTxChar = pSvc->createCharacteristic(NUS_TX_UUID, NIMBLE_PROPERTY::NOTIFY);
-  pRxChar = pSvc->createCharacteristic(NUS_RX_UUID,
-              NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
-  pRxChar->setCallbacks(new RxCallbacks());
-  pSvc->start();
-  NimBLEAdvertising* pAdv = NimBLEDevice::getAdvertising();
-  pAdv->addServiceUUID(NUS_SERVICE_UUID);
-  pAdv->enableScanResponse(true);
-  NimBLEDevice::startAdvertising();
-  Serial.println("[BLE] Advertising as 'DoggleEyes'");
+  // ── BLE advertising check — camera init can silently stop it ──
+  {
+    bool stillAdv = NimBLEDevice::getAdvertising()->isAdvertising();
+    Serial.printf("[BLE] After camera init: advertising = %s\n", stillAdv ? "YES (good)" : "NO — restarting");
+    if (!stillAdv) {
+      NimBLEDevice::startAdvertising();
+      Serial.println("[BLE] Advertising restarted.");
+    }
+  }
+
+  // Re-assert CS pins — camera init reconfigures IO matrix
+  pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
+  pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
+
   Serial.println("[DoggleEyes v3.1] Ready — displays + haptic + camera + BLE.");
 }
 
@@ -424,7 +469,7 @@ void loop() {
       s.blinking = true; s.blinkPhase = 0.0f;
     }
     if (s.blinking) {
-      float bp = s.blinkPhase + dt * 6.0f;
+      float bp = s.blinkPhase + dt * 18.0f;  // 18x speed = ~55ms blink vs old 300ms
       portENTER_CRITICAL(&eyeMux);
       if (bp > 1.0f) { state.blinkPhase=0.0f; state.blinking=false; state.lastBlink=now; }
       else           { state.blinkPhase=bp; }
@@ -485,15 +530,31 @@ void loop() {
   }
 
   // ── Draw both eyes ────────────────────────────────────
-  selectDisplay(false);
+  // Draw left eye into sprite, then push to display in one SPI burst.
+  // This eliminates rolling-shutter: the display only updates once the
+  // full frame is ready, transferring as a single continuous pixel stream.
   drawEye(gx, gy, false, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
           s.irisOuter, s.irisInner);
-  selectDisplay(true);
-  drawEye(s.mirror ? -gx : gx, gy, true, s.blinkPhase, effectiveMood,
-          s.eyeScale, pupilMul, s.irisOuter, s.irisInner);
+  selectDisplay(false);
+  spr->pushSprite(0, 0);
+
+  // Right display physically damaged — disabled until replaced.
+  // Restore these two lines when right display is working:
+  // drawEye(s.mirror ? -gx : gx, gy, true, ...);
+  // selectDisplay(true);  spr->pushSprite(0, 0);
   // Deassert both CS at end of frame — leaves bus idle
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
+
+  // ── BLE advertising heartbeat (~every 5s) ────────────
+  static unsigned long lastAdvCheck = 0;
+  if (now - lastAdvCheck > 5000) {
+    bool adv = NimBLEDevice::getAdvertising()->isAdvertising();
+    Serial.printf("[BLE] heartbeat — advertising=%s connected=%s\n",
+                  adv ? "YES" : "NO", deviceConnected ? "YES" : "NO");
+    if (!adv && !deviceConnected) NimBLEDevice::startAdvertising();
+    lastAdvCheck = now;
+  }
 
   // ── BLE status ping (~every 3s) ───────────────────────
   static unsigned long lastPing = 0;

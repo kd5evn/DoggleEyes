@@ -57,5 +57,5 @@
 // so there is no bus conflict. Display SPI runs independently.
 // GPIO matrix routing (non-native pins) caps reliable SPI at ~20 MHz.
 // Raise to 40 MHz only once displays are confirmed working.
-#define SPI_FREQUENCY       20000000
+#define SPI_FREQUENCY       20000000   // 20 MHz — single display, sprite push, no CS switching mid-frame
 #define SPI_READ_FREQUENCY   5000000
