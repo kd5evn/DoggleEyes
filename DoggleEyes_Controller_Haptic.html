@@ -310,7 +310,7 @@ async function connectBLE(){
   setConnStatus('Scanning...','idle');
   document.getElementById('connectBtn').textContent='🔍 Scanning...';
   try{
-    bleDevice=await navigator.bluetooth.requestDevice({filters:[{name:'DoggleEyes'}],optionalServices:[NUS_SERVICE]});
+    bleDevice=await navigator.bluetooth.requestDevice({filters:[{services:[NUS_SERVICE]}],optionalServices:[NUS_SERVICE]});
     bleDevice.addEventListener('gattserverdisconnected',onDisconnected);
     const server=await bleDevice.gatt.connect();
     const svc=await server.getPrimaryService(NUS_SERVICE);

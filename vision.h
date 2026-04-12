@@ -71,7 +71,7 @@ inline void computeMotionCentroid(
   // Left/right is natural; up/down may need to be inverted
   // depending on camera orientation. Flip gy sign if needed.
   gx =  ((cx / w) - 0.5f) * 2.0f;
-  gy =  ((cy / h) - 0.5f) * 2.0f;
+  gy = -((cy / h) - 0.5f) * 2.0f;  // negated: OV2640 on XIAO is mounted inverted vertically
 
   // Clamp
   gx = gx < -1.0f ? -1.0f : (gx > 1.0f ? 1.0f : gx);

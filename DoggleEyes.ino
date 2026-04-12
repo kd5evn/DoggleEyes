@@ -46,6 +46,7 @@
 #include "vision.h"
 #include "eye_graphics.h"
 #include "haptic_vision.h"
+#include "camera_stream.h"
 
 // ── BLE UUIDs (Nordic UART Service) ──────────────────────────
 #define NUS_SERVICE_UUID  "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
@@ -253,6 +254,9 @@ void visionTask(void* param) {
   memset(prevFrame, 128, W * H);
 
   for (;;) {
+    // Pause while camera stream client is connected (camera is in JPEG mode)
+    if (streamActive) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
+
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
 
@@ -347,12 +351,12 @@ void setup() {
   // bus or touch RST, so the first display stays initialised.
   selectDisplay(true);   // right display
   tftPtr->init();
-  tftPtr->setRotation(0);
+  tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
 
   selectDisplay(false);  // left display
   tftPtr->init();
-  tftPtr->setRotation(0);
+  tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
 
   digitalWrite(CS_LEFT,  HIGH);
@@ -426,6 +430,7 @@ void setup() {
     state.cameraActive = true;
     portEXIT_CRITICAL(&eyeMux);
     Serial.println("[Camera] Initialised OK — 160x120 grayscale.");
+    initCameraStream();
     xTaskCreatePinnedToCore(visionTask, "VisionTask", 8192, NULL, 1, NULL, 0);
   }
 
@@ -533,14 +538,14 @@ void loop() {
   // Draw left eye into sprite, then push to display in one SPI burst.
   // This eliminates rolling-shutter: the display only updates once the
   // full frame is ready, transferring as a single continuous pixel stream.
-  drawEye(gx, gy, false, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
-          s.irisOuter, s.irisInner);
+  drawEye(-gx, gy, false, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
+          s.irisOuter, s.irisInner);  // negate X — setRotation(2) mirrors horizontal axis
   selectDisplay(false);
   spr->pushSprite(0, 0);
 
   // Right display physically damaged — disabled until replaced.
   // Restore these two lines when right display is working:
-  // drawEye(s.mirror ? -gx : gx, gy, true, ...);
+  // drawEye(s.mirror ? gx : -gx, gy, true, ...);
   // selectDisplay(true);  spr->pushSprite(0, 0);
   // Deassert both CS at end of frame — leaves bus idle
   digitalWrite(CS_LEFT,  HIGH);
@@ -555,6 +560,9 @@ void loop() {
     if (!adv && !deviceConnected) NimBLEDevice::startAdvertising();
     lastAdvCheck = now;
   }
+
+  // ── Camera stream server tick ─────────────────────────
+  handleCameraStream();
 
   // ── BLE status ping (~every 3s) ───────────────────────
   static unsigned long lastPing = 0;
