@@ -403,9 +403,13 @@ function renderPreview(){
   c.width=imgW;c.height=imgH;
   const ctx=c.getContext('2d');
   const id=ctx.createImageData(imgW,imgH);
-  for(let i=0;i<imgBuf.length;i++){
-    const v=imgBuf[i];
-    id.data[i*4]=v;id.data[i*4+1]=v;id.data[i*4+2]=v;id.data[i*4+3]=255;
+  for(let y=0;y<imgH;y++){
+    for(let x=0;x<imgW;x++){
+      const src=(imgH-1-y)*imgW+x;  // flip vertically — camera is mounted inverted
+      const dst=(y*imgW+x)*4;
+      const v=imgBuf[src];
+      id.data[dst]=v;id.data[dst+1]=v;id.data[dst+2]=v;id.data[dst+3]=255;
+    }
   }
   ctx.putImageData(id,0,0);
   previewFrameCount++;
