@@ -247,7 +247,7 @@ inline void hapticTest() {
   Serial.println("[Haptic] Testing LEFT motor...");
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 160);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  vTaskDelay(pdMS_TO_TICKS(400));
+  vTaskDelay(pdMS_TO_TICKS(1000));
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 0);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
   vTaskDelay(pdMS_TO_TICKS(200));
@@ -255,7 +255,7 @@ inline void hapticTest() {
   Serial.println("[Haptic] Testing RIGHT motor...");
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 160);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
-  vTaskDelay(pdMS_TO_TICKS(400));
+  vTaskDelay(pdMS_TO_TICKS(1000));
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
 
