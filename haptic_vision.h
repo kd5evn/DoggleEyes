@@ -41,8 +41,6 @@
 
 // ── LEDC config ──────────────────────────────────────────────
 #define MOTOR_LEDC_FREQ   200   // Hz — low freq = stronger feel, 8-bit duty (0-255)
-#define MOTOR_LEFT_CH     4     // LEDC channel 4 — clear of camera (ch 0) and display
-#define MOTOR_RIGHT_CH    5     // LEDC channel 5
 
 // ── Tuning constants ─────────────────────────────────────────
 // Minimum % of a half-frame that must change to trigger vibration
@@ -79,18 +77,17 @@ extern HapticState hapticState;
 //  Internal helper — write duty to one motor via Arduino ledcWrite.
 //  Using Arduino API (not raw IDF) so GPIO ownership is always
 //  correctly maintained and cannot be broken by pinMode/digitalWrite.
-inline void hapticWrite(int channel, uint8_t duty) {
-  ledcWrite(channel, duty);
+inline void hapticWrite(int pin, uint8_t duty) {
+  ledcWrite(pin, duty);
 }
 
 // ── hapticInit ───────────────────────────────────────────────
 inline void hapticInit() {
-  ledcSetup(MOTOR_LEFT_CH,  MOTOR_LEDC_FREQ, 8);
-  ledcSetup(MOTOR_RIGHT_CH, MOTOR_LEDC_FREQ, 8);
-  ledcAttachPin(MOTOR_LEFT_PIN,  MOTOR_LEFT_CH);
-  ledcAttachPin(MOTOR_RIGHT_PIN, MOTOR_RIGHT_CH);
-  ledcWrite(MOTOR_LEFT_CH,  0);
-  ledcWrite(MOTOR_RIGHT_CH, 0);
+  // Arduino ESP32 v3.x API: ledcAttach(pin, freq, resolution_bits)
+  ledcAttach(MOTOR_LEFT_PIN,  MOTOR_LEDC_FREQ, 8);
+  ledcAttach(MOTOR_RIGHT_PIN, MOTOR_LEDC_FREQ, 8);
+  ledcWrite(MOTOR_LEFT_PIN,  0);
+  ledcWrite(MOTOR_RIGHT_PIN, 0);
   Serial.println("[Haptic] Motors initialised on GPIO 7 (L) and GPIO 8 (R).");
 }
 
@@ -151,8 +148,8 @@ inline void updateHaptic(
   portEXIT_CRITICAL(&eyeMux);
 
   if (!enabled) {
-    ledcWrite(MOTOR_LEFT_CH,  0);
-    ledcWrite(MOTOR_RIGHT_CH, 0);
+    ledcWrite(MOTOR_LEFT_PIN,  0);
+    ledcWrite(MOTOR_RIGHT_PIN, 0);
     return;
   }
 
@@ -195,8 +192,8 @@ inline void updateHaptic(
     dbgCount = 0;
   }
 
-  ledcWrite(MOTOR_LEFT_CH,  pwmL);
-  ledcWrite(MOTOR_RIGHT_CH, pwmR);
+  ledcWrite(MOTOR_LEFT_PIN,  pwmL);
+  ledcWrite(MOTOR_RIGHT_PIN, pwmR);
 
   // Store final PWM for BLE telemetry
   portENTER_CRITICAL(&eyeMux);
@@ -212,23 +209,23 @@ inline void hapticSetEnabled(bool en) {
   hapticState.enabled = en;
   portEXIT_CRITICAL(&eyeMux);
   if (!en) {
-    ledcWrite(MOTOR_LEFT_CH,  0);
-    ledcWrite(MOTOR_RIGHT_CH, 0);
+    ledcWrite(MOTOR_LEFT_PIN,  0);
+    ledcWrite(MOTOR_RIGHT_PIN, 0);
   }
 }
 
 // ── hapticTest ───────────────────────────────────────────────
 inline void hapticTest() {
   Serial.println("[Haptic] Testing LEFT motor...");
-  ledcWrite(MOTOR_LEFT_CH, 160);
+  ledcWrite(MOTOR_LEFT_PIN, 160);
   delay(1000);
-  ledcWrite(MOTOR_LEFT_CH, 0);
+  ledcWrite(MOTOR_LEFT_PIN, 0);
   delay(200);
 
   Serial.println("[Haptic] Testing RIGHT motor...");
-  ledcWrite(MOTOR_RIGHT_CH, 160);
+  ledcWrite(MOTOR_RIGHT_PIN, 160);
   delay(1000);
-  ledcWrite(MOTOR_RIGHT_CH, 0);
+  ledcWrite(MOTOR_RIGHT_PIN, 0);
 
   Serial.println("[Haptic] Motor test complete.");
 }
