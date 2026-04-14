@@ -589,7 +589,7 @@ void loop() {
   spr->pushSprite(0, 0);
 
   // Right eye
-  drawEye(s.mirror ? gx : -gx, gy, true, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
+  drawEye(s.mirror ? -gx : gx, gy, true, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
           s.irisOuter, s.irisInner);
   selectDisplay(true);
   spr->pushSprite(0, 0);
