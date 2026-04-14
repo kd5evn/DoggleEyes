@@ -421,6 +421,7 @@ void setup() {
 
   // ── Haptic motors ──────────────────────────────────────
   hapticInit();
+  hapticTest();
 
   // ── BLE — init BEFORE camera ───────────────────────────
   // NimBLE and esp_camera both use Core 0. Starting BLE first gives the
