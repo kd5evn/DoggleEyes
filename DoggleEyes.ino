@@ -588,10 +588,12 @@ void loop() {
   selectDisplay(false);
   spr->pushSprite(0, 0);
 
-  // Right display physically damaged — disabled until replaced.
-  // Restore these two lines when right display is working:
-  // drawEye(s.mirror ? gx : -gx, gy, true, ...);
-  // selectDisplay(true);  spr->pushSprite(0, 0);
+  // Right eye
+  drawEye(s.mirror ? gx : -gx, gy, true, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
+          s.irisOuter, s.irisInner);
+  selectDisplay(true);
+  spr->pushSprite(0, 0);
+
   // Deassert both CS at end of frame — leaves bus idle
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
