@@ -241,21 +241,40 @@ inline void hapticSetEnabled(bool en) {
 }
 
 // ── hapticTest ───────────────────────────────────────────────
-//  One-shot test: pulses left then right motor so you can
-//  verify wiring. Call from setup() if needed.
+//  One-shot test: pulses left then right motor.
+//  Phase 1 — plain digitalWrite (no PWM) to verify GPIO + transistor.
+//  Phase 2 — LEDC PWM to verify PWM path.
 inline void hapticTest() {
-  Serial.println("[Haptic] Testing LEFT motor...");
+  // ── Phase 1: raw GPIO HIGH — motor should spin at full speed ──
+  Serial.println("[Haptic] Phase 1 — GPIO HIGH test (no PWM)");
+  Serial.println("[Haptic] Testing LEFT motor (GPIO HIGH)...");
+  pinMode(MOTOR_LEFT_PIN,  OUTPUT);
+  pinMode(MOTOR_RIGHT_PIN, OUTPUT);
+  digitalWrite(MOTOR_LEFT_PIN, HIGH);
+  delay(1000);
+  digitalWrite(MOTOR_LEFT_PIN, LOW);
+  delay(200);
+
+  Serial.println("[Haptic] Testing RIGHT motor (GPIO HIGH)...");
+  digitalWrite(MOTOR_RIGHT_PIN, HIGH);
+  delay(1000);
+  digitalWrite(MOTOR_RIGHT_PIN, LOW);
+  delay(200);
+
+  // ── Phase 2: LEDC PWM at ~63% duty ───────────────────────────
+  Serial.println("[Haptic] Phase 2 — LEDC PWM test");
+  Serial.println("[Haptic] Testing LEFT motor (PWM)...");
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 160);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  delay(1000);
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 0);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  vTaskDelay(pdMS_TO_TICKS(200));
+  delay(200);
 
-  Serial.println("[Haptic] Testing RIGHT motor...");
+  Serial.println("[Haptic] Testing RIGHT motor (PWM)...");
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 160);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  delay(1000);
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
 
