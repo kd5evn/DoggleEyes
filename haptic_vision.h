@@ -33,18 +33,16 @@
 #pragma once
 #include <stdint.h>
 #include <math.h>
-#include "driver/ledc.h"
+#include <Arduino.h>
 
 // ── Pin assignments ──────────────────────────────────────────
 #define MOTOR_LEFT_PIN    7    // GPIO 7  — coin motor, left side of goggles
 #define MOTOR_RIGHT_PIN   8    // GPIO 8  — coin motor, right side of goggles
 
 // ── LEDC config ──────────────────────────────────────────────
-#define MOTOR_LEDC_FREQ   200          // Hz — low freq = stronger feel
-#define MOTOR_LEDC_RES    LEDC_TIMER_8_BIT   // 8-bit = 0-255
-#define MOTOR_LEFT_CH     LEDC_CHANNEL_4
-#define MOTOR_RIGHT_CH    LEDC_CHANNEL_5
-#define MOTOR_LEDC_TIMER  LEDC_TIMER_2       // separate from camera
+#define MOTOR_LEDC_FREQ   200   // Hz — low freq = stronger feel, 8-bit duty (0-255)
+#define MOTOR_LEFT_CH     4     // LEDC channel 4 — clear of camera (ch 0) and display
+#define MOTOR_RIGHT_CH    5     // LEDC channel 5
 
 // ── Tuning constants ─────────────────────────────────────────
 // Minimum % of a half-frame that must change to trigger vibration
@@ -77,44 +75,22 @@ struct HapticState {
 extern portMUX_TYPE eyeMux;
 extern HapticState hapticState;
 
+// ── hapticWrite ──────────────────────────────────────────────
+//  Internal helper — write duty to one motor via Arduino ledcWrite.
+//  Using Arduino API (not raw IDF) so GPIO ownership is always
+//  correctly maintained and cannot be broken by pinMode/digitalWrite.
+inline void hapticWrite(int channel, uint8_t duty) {
+  ledcWrite(channel, duty);
+}
+
 // ── hapticInit ───────────────────────────────────────────────
-//  Call once in setup() after Serial.begin()
 inline void hapticInit() {
-  // Configure LEDC timer
-  ledc_timer_config_t timer_conf = {};
-  timer_conf.speed_mode      = LEDC_LOW_SPEED_MODE;
-  timer_conf.duty_resolution  = MOTOR_LEDC_RES;
-  timer_conf.timer_num        = MOTOR_LEDC_TIMER;
-  timer_conf.freq_hz          = MOTOR_LEDC_FREQ;
-  timer_conf.clk_cfg          = LEDC_AUTO_CLK;
-  ledc_timer_config(&timer_conf);
-
-  // Configure left motor channel
-  ledc_channel_config_t ch_left = {};
-  ch_left.gpio_num   = MOTOR_LEFT_PIN;
-  ch_left.speed_mode = LEDC_LOW_SPEED_MODE;
-  ch_left.channel    = MOTOR_LEFT_CH;
-  ch_left.timer_sel  = MOTOR_LEDC_TIMER;
-  ch_left.duty       = 0;
-  ch_left.hpoint     = 0;
-  ledc_channel_config(&ch_left);
-
-  // Configure right motor channel
-  ledc_channel_config_t ch_right = {};
-  ch_right.gpio_num   = MOTOR_RIGHT_PIN;
-  ch_right.speed_mode = LEDC_LOW_SPEED_MODE;
-  ch_right.channel    = MOTOR_RIGHT_CH;
-  ch_right.timer_sel  = MOTOR_LEDC_TIMER;
-  ch_right.duty       = 0;
-  ch_right.hpoint     = 0;
-  ledc_channel_config(&ch_right);
-
-  // Start both motors at 0
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH,  0);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
-
+  ledcSetup(MOTOR_LEFT_CH,  MOTOR_LEDC_FREQ, 8);
+  ledcSetup(MOTOR_RIGHT_CH, MOTOR_LEDC_FREQ, 8);
+  ledcAttachPin(MOTOR_LEFT_PIN,  MOTOR_LEFT_CH);
+  ledcAttachPin(MOTOR_RIGHT_PIN, MOTOR_RIGHT_CH);
+  ledcWrite(MOTOR_LEFT_CH,  0);
+  ledcWrite(MOTOR_RIGHT_CH, 0);
   Serial.println("[Haptic] Motors initialised on GPIO 7 (L) and GPIO 8 (R).");
 }
 
@@ -175,10 +151,8 @@ inline void updateHaptic(
   portEXIT_CRITICAL(&eyeMux);
 
   if (!enabled) {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH,  0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
+    ledcWrite(MOTOR_LEFT_CH,  0);
+    ledcWrite(MOTOR_RIGHT_CH, 0);
     return;
   }
 
@@ -221,11 +195,8 @@ inline void updateHaptic(
     dbgCount = 0;
   }
 
-  // Write to LEDC hardware (direct, no FreeRTOS call needed from Core 0)
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH,  pwmL);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, pwmR);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
+  ledcWrite(MOTOR_LEFT_CH,  pwmL);
+  ledcWrite(MOTOR_RIGHT_CH, pwmR);
 
   // Store final PWM for BLE telemetry
   portENTER_CRITICAL(&eyeMux);
@@ -241,50 +212,23 @@ inline void hapticSetEnabled(bool en) {
   hapticState.enabled = en;
   portEXIT_CRITICAL(&eyeMux);
   if (!en) {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH,  0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
+    ledcWrite(MOTOR_LEFT_CH,  0);
+    ledcWrite(MOTOR_RIGHT_CH, 0);
   }
 }
 
 // ── hapticTest ───────────────────────────────────────────────
-//  One-shot test: pulses left then right motor.
-//  Phase 1 — plain digitalWrite (no PWM) to verify GPIO + transistor.
-//  Phase 2 — LEDC PWM to verify PWM path.
 inline void hapticTest() {
-  // ── Phase 1: raw GPIO HIGH — motor should spin at full speed ──
-  Serial.println("[Haptic] Phase 1 — GPIO HIGH test (no PWM)");
-  Serial.println("[Haptic] Testing LEFT motor (GPIO HIGH)...");
-  pinMode(MOTOR_LEFT_PIN,  OUTPUT);
-  pinMode(MOTOR_RIGHT_PIN, OUTPUT);
-  digitalWrite(MOTOR_LEFT_PIN, HIGH);
+  Serial.println("[Haptic] Testing LEFT motor...");
+  ledcWrite(MOTOR_LEFT_CH, 160);
   delay(1000);
-  digitalWrite(MOTOR_LEFT_PIN, LOW);
+  ledcWrite(MOTOR_LEFT_CH, 0);
   delay(200);
 
-  Serial.println("[Haptic] Testing RIGHT motor (GPIO HIGH)...");
-  digitalWrite(MOTOR_RIGHT_PIN, HIGH);
+  Serial.println("[Haptic] Testing RIGHT motor...");
+  ledcWrite(MOTOR_RIGHT_CH, 160);
   delay(1000);
-  digitalWrite(MOTOR_RIGHT_PIN, LOW);
-  delay(200);
-
-  // ── Phase 2: LEDC PWM at ~63% duty ───────────────────────────
-  Serial.println("[Haptic] Phase 2 — LEDC PWM test");
-  Serial.println("[Haptic] Testing LEFT motor (PWM)...");
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 160);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  delay(1000);
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH, 0);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);
-  delay(200);
-
-  Serial.println("[Haptic] Testing RIGHT motor (PWM)...");
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 160);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
-  delay(1000);
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH, 0);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_RIGHT_CH);
+  ledcWrite(MOTOR_RIGHT_CH, 0);
 
   Serial.println("[Haptic] Motor test complete.");
 }
