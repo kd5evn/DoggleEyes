@@ -213,6 +213,14 @@ inline void updateHaptic(
   uint8_t pwmL = toPWM(smoothL);
   uint8_t pwmR = toPWM(smoothR);
 
+  // Debug — print density + PWM every ~2s (every 30 frames at 15fps)
+  static int dbgCount = 0;
+  if (++dbgCount >= 30) {
+    Serial.printf("[Haptic] rawL=%.3f rawR=%.3f pwmL=%d pwmR=%d threshold=%.3f\n",
+                  rawLeft, rawRight, pwmL, pwmR, minDensity);
+    dbgCount = 0;
+  }
+
   // Write to LEDC hardware (direct, no FreeRTOS call needed from Core 0)
   ledc_set_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH,  pwmL);
   ledc_update_duty(LEDC_LOW_SPEED_MODE, MOTOR_LEFT_CH);

@@ -253,6 +253,15 @@ void visionTask(void* param) {
   }
   memset(prevFrame, 128, W * H);
 
+  // Skip first 60 frames — camera produces noisy output during warmup
+  // which triggers false haptic motion detections
+  for (int warmup = 0; warmup < 60; warmup++) {
+    camera_fb_t* fb = esp_camera_fb_get();
+    if (fb) { memcpy(prevFrame, fb->buf, W * H); esp_camera_fb_return(fb); }
+    vTaskDelay(pdMS_TO_TICKS(VISION_INTERVAL_MS));
+  }
+  Serial.println("[Vision] Warmup complete — haptics and gaze now active.");
+
   for (;;) {
     // Pause while camera stream client is connected (camera is in JPEG mode)
     if (streamActive) { vTaskDelay(pdMS_TO_TICKS(50)); continue; }
