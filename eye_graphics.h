@@ -23,7 +23,7 @@ extern TFT_eSprite* spr;      // framebuffer — all drawing goes here
 #define CR  108
 
 // Forward declarations
-inline void drawAngryEye(float gx, float gy, float lidT, float eyeScale, float pupilScale, uint16_t irisOuter, uint16_t irisInner);
+inline void drawAngryEye(float gx, float gy, bool isRight, float lidT, float eyeScale, float pupilScale, uint16_t irisOuter, uint16_t irisInner);
 inline void drawClosedLids();
 inline void drawHeartEye();
 
@@ -40,7 +40,7 @@ inline void drawEye(float gx, float gy, bool isRight, float blinkPhase,
   if (strcmp(mood, "closed") == 0) { drawClosedLids(); return; }
   if (strcmp(mood, "heart")  == 0) { drawHeartEye();   return; }
   if (strcmp(mood, "angry")  == 0) {
-    drawAngryEye(gx, gy, lidT, eyeScale, pupilScale, irisOuter, irisInner);
+    drawAngryEye(gx, gy, isRight, lidT, eyeScale, pupilScale, irisOuter, irisInner);
     return;
   }
 
@@ -96,11 +96,14 @@ inline void drawEye(float gx, float gy, bool isRight, float blinkPhase,
   // and the GC9A01 is physically round so off-sclera pixels are never seen.
 }
 
-inline void drawAngryEye(float gx, float gy, float lidT, float eyeScale,
+inline void drawAngryEye(float gx, float gy, bool isRight, float lidT, float eyeScale,
                           float pupilScale, uint16_t irisOuter, uint16_t irisInner) {
   spr->fillCircle(CX, CY, CR, C_EYE_WHITE);
   int brow_y = CY - (int)(CR * 0.55f);
-  spr->fillTriangle(CX - CR, CY - CR, CX, brow_y, CX - CR, CY, C_BLACK);
+  // Outside corner: with setRotation(2) X is physically flipped, so
+  // outside (temple side) = CX+CR for left eye, CX-CR for right eye.
+  int browX = isRight ? (CX - CR) : (CX + CR);
+  spr->fillTriangle(browX, CY - CR, CX, brow_y, browX, CY, C_BLACK);
   int irisR  = (int)(44 * eyeScale);
   int ox = (int)(gx * CR * 0.55f);
   int oy = (int)(gy * CR * 0.55f) + 8;
