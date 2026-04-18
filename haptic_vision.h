@@ -77,8 +77,10 @@ extern HapticState hapticState;
 //  Internal helper — write duty to one motor via Arduino ledcWrite.
 //  Using Arduino API (not raw IDF) so GPIO ownership is always
 //  correctly maintained and cannot be broken by pinMode/digitalWrite.
+// Motor driver board is active-LOW: IN=LOW → motor ON, IN=HIGH → motor OFF.
+// Invert duty so our API uses 0=off, 255=full like a normal driver.
 inline void hapticWrite(int pin, uint8_t duty) {
-  ledcWrite(pin, duty);
+  ledcWrite(pin, 255 - duty);
 }
 
 // ── hapticInit ───────────────────────────────────────────────
@@ -86,8 +88,8 @@ inline void hapticInit() {
   // Arduino ESP32 v3.x API: ledcAttach(pin, freq, resolution_bits)
   ledcAttach(MOTOR_LEFT_PIN,  MOTOR_LEDC_FREQ, 8);
   ledcAttach(MOTOR_RIGHT_PIN, MOTOR_LEDC_FREQ, 8);
-  ledcWrite(MOTOR_LEFT_PIN,  0);
-  ledcWrite(MOTOR_RIGHT_PIN, 0);
+  hapticWrite(MOTOR_LEFT_PIN,  0);  // 0=off → writes 255 (HIGH) for active-low board
+  hapticWrite(MOTOR_RIGHT_PIN, 0);
   Serial.println("[Haptic] Motors initialised on GPIO 7 (L) and GPIO 8 (R).");
 }
 
@@ -148,8 +150,8 @@ inline void updateHaptic(
   portEXIT_CRITICAL(&eyeMux);
 
   if (!enabled) {
-    ledcWrite(MOTOR_LEFT_PIN,  0);
-    ledcWrite(MOTOR_RIGHT_PIN, 0);
+    hapticWrite(MOTOR_LEFT_PIN,  0);
+    hapticWrite(MOTOR_RIGHT_PIN, 0);
     return;
   }
 
@@ -192,8 +194,8 @@ inline void updateHaptic(
     dbgCount = 0;
   }
 
-  ledcWrite(MOTOR_LEFT_PIN,  pwmL);
-  ledcWrite(MOTOR_RIGHT_PIN, pwmR);
+  hapticWrite(MOTOR_LEFT_PIN,  pwmL);
+  hapticWrite(MOTOR_RIGHT_PIN, pwmR);
 
   // Store final PWM for BLE telemetry
   portENTER_CRITICAL(&eyeMux);
@@ -209,23 +211,23 @@ inline void hapticSetEnabled(bool en) {
   hapticState.enabled = en;
   portEXIT_CRITICAL(&eyeMux);
   if (!en) {
-    ledcWrite(MOTOR_LEFT_PIN,  0);
-    ledcWrite(MOTOR_RIGHT_PIN, 0);
+    hapticWrite(MOTOR_LEFT_PIN,  0);
+    hapticWrite(MOTOR_RIGHT_PIN, 0);
   }
 }
 
 // ── hapticTest ───────────────────────────────────────────────
 inline void hapticTest() {
   Serial.println("[Haptic] Testing LEFT motor...");
-  ledcWrite(MOTOR_LEFT_PIN, 160);
+  hapticWrite(MOTOR_LEFT_PIN, 160);
   delay(1000);
-  ledcWrite(MOTOR_LEFT_PIN, 0);
+  hapticWrite(MOTOR_LEFT_PIN, 0);
   delay(200);
 
   Serial.println("[Haptic] Testing RIGHT motor...");
-  ledcWrite(MOTOR_RIGHT_PIN, 160);
+  hapticWrite(MOTOR_RIGHT_PIN, 160);
   delay(1000);
-  ledcWrite(MOTOR_RIGHT_PIN, 0);
+  hapticWrite(MOTOR_RIGHT_PIN, 0);
 
   Serial.println("[Haptic] Motor test complete.");
 }
