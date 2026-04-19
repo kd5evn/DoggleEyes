@@ -41,11 +41,12 @@ The camera sees the world. The motors tell the dog what's coming.
 ### Haptic Motors (v3.1)
 
 Motors are driven by an active-HIGH motor driver board (HIGH = motor ON, LOW = motor OFF).
+Haptic sensing is **off by default** — enable it via the BLE controller.
 
 | Signal | XIAO Pin | XIAO GPIO | Goes To |
 |---|---|---|---|
-| Left motor | D6 | GPIO 43 | Driver board IN1 |
-| Right motor | D7 | GPIO 44 | Driver board IN2 |
+| Left motor | D7 | GPIO 44 | Driver board IN1 |
+| Right motor | D6 | GPIO 43 | Driver board IN2 |
 | Motor power | 3V3 or 5V | — | Driver board VM |
 | Ground | GND | — | Driver board GND |
 
@@ -64,7 +65,7 @@ Internal to the XIAO ESP32-S3 Sense daughterboard.
 
 2. **Board settings:**
    - Board: `Seeed XIAO ESP32S3`
-   - PSRAM: **OPI PSRAM** ← required; this resets after board package updates — check it every time you update
+   - PSRAM: **OPI PSRAM** ← required; this resets after board package updates — check every time you update
    - Partition Scheme: **Huge APP** ← required for BLE + camera + TFT
    - Upload Speed: `921600`
 
@@ -122,29 +123,33 @@ Two GC9A01 240×240 round TFT displays show animated eyes with:
 - Automatic blinking at configurable rate
 - Gaze direction driven by camera motion centroid
 - Pupil dilation based on scene brightness
+- Default iris colour: deep cobalt blue (tunable via BLE controller)
 - Moods: normal, wide, angry, squint, sleepy, laser, derp, heart, closed
 - Both eyes mirror gaze correctly with `setRotation(2)` (180° physical mount)
+- Right display initialised last to avoid intermittent GC9A01 init failures
 
 ### Camera vision
 
 The OV2640 runs at 160×120 grayscale (QQVGA) at ~15fps on Core 0.
-- **Motion centroid** — computes the weighted centre of changed pixels to drive gaze direction
+Frame buffers stored in internal DRAM (19 kB, avoids PSRAM DMA allocation issues).
+- **Motion centroid** — computes the weighted centre of changed pixels to drive gaze
 - **Brightness** — average pixel luminance drives pupil dilation
 - **Face proxy** — large bright oval in centre triggers "wide" eye mood
 - **Camera warmup** — first 60 frames discarded to avoid false triggers at boot
 
 ### Haptic obstacle sensing
 
-The camera frame is split down the middle into left and right halves.
+The camera frame (160×120) is split vertically down the centre into left and right zones.
 `updateHaptic()` computes motion density in each half with proximity weighting
-(bottom of frame = closer = weighted more heavily).
+(bottom rows weighted up to 2× — physically closer to the dog).
 
+- **Haptic is OFF by default** — enable via the BLE controller toggle
 - **Motion below threshold** → motor OFF
-- **Motion above threshold** → motor ON (binary, no PWM)
-- **Left half motion** → left motor (GPIO 43 / D6)
-- **Right half motion** → right motor (GPIO 44 / D7)
+- **Motion above threshold** → motor ON (binary on/off)
+- **Left zone (cols 0–79)** → left motor (GPIO 44 / D7)
+- **Right zone (cols 80–159)** → right motor (GPIO 43 / D6)
 - Exponential smoothing (alpha = 0.35) prevents jitter
-- Enable/disable and sensitivity tunable via BLE
+- Sensitivity tunable via BLE (Low = barely fires, High = old "Low" threshold)
 
 ### WiFi camera stream
 
@@ -156,7 +161,7 @@ pauses while a client is connected and resumes on disconnect.
 
 The BLE controller includes a diagnostic view showing the 40×30 grayscale
 camera image at ~3fps with haptic zone overlay (vertical centre line +
-orange intensity fill). Enable it with the Diagnostics button in the HTML controller.
+orange intensity fill). Enable via the Diagnostics toggle in the HTML controller.
 
 ---
 
@@ -170,13 +175,24 @@ so it finds DoggleEyes regardless of what other BLE devices are nearby.
 
 The controller provides:
 - **Mood selector** — normal, wide, angry, squint, sleepy, laser, derp, heart, closed
-- **Gaze joystick** — manual gaze override
+- **Gaze joystick** — manual gaze override (releases back to camera tracking)
 - **Eye/pupil scale** sliders
-- **Iris colour** pickers (inner + outer)
+- **Iris colour** swatches (8 presets)
 - **Blink rate** slider + manual blink trigger
 - **Vision toggles** — motion tracking, light sensing, face reaction
-- **Haptic controls** — enable/disable toggle + sensitivity slider
+- **Haptic controls** — enable/disable toggle (off by default) + sensitivity slider
+- **Quick Actions** — Force Blink, Spin Out, Dilate, Alert, Reset to Defaults
 - **Diagnostics** — live 40×30 camera preview with haptic zone overlay
+
+### Haptic sensitivity slider
+
+| Setting | Threshold | Behaviour |
+|---------|-----------|-----------|
+| Low | 0.30 | Only fires with very large / close motion |
+| Med-Low | 0.22 | |
+| Medium | 0.16 | Default on reset |
+| Med-High | 0.11 | |
+| High | 0.08 | Maximum sensitivity |
 
 ---
 
@@ -186,7 +202,7 @@ The controller provides:
 [DoggleEyes v3.1 Haptic] Booting...
 [Sprite] 240x240 framebuffer allocated in PSRAM.
 [Init] Displays OK.
-[Haptic] Motors initialised on GPIO 43/D6 (L) and GPIO 44/D7 (R) — digitalWrite mode.
+[Haptic] Motors initialised on GPIO 44/D7 (L) and GPIO 43/D6 (R) — digitalWrite mode.
 [BLE] startAdvertising() = OK
 [BLE] Advertising as 'DoggleEyes'
 [Camera] Initialised OK — 160x120 grayscale.
@@ -195,7 +211,7 @@ The controller provides:
 [Vision] Task started on Core 0.
 [Vision] Warmup complete — haptics and gaze now active.
 [DoggleEyes v3.1] Ready — displays + haptic + camera + BLE.
-[Haptic] rawL=0.000 rawR=0.000 smoothL=0.000 smoothR=0.000 motL=0 motR=0 threshold=0.040
+[Haptic] rawL=0.000 rawR=0.000 smoothL=0.000 smoothR=0.000 motL=0 motR=0 threshold=0.160
 ```
 
 ---
@@ -204,13 +220,15 @@ The controller provides:
 
 | Problem | Solution |
 |---|---|
-| `[Camera] Init FAILED` | Check PSRAM is set to **OPI PSRAM** in board settings — this resets after IDE/board updates |
+| `[Camera] Init FAILED` | Check PSRAM is set to **OPI PSRAM** in board settings — resets after IDE/board updates |
 | Camera fails after board package update | Re-select OPI PSRAM in Tools menu and re-flash |
 | Display shows garbage | Verify User_Setup.h is the v3 version with GPIO 4/5/1/2/3/6 |
-| Motors run continuously | Check active-HIGH/LOW logic of your driver board; verify correct motor driver pins |
-| No motor vibration | Confirm wires on D6/D7 (not D8/D9); check driver board power supply |
+| Right eye doesn't initialise on boot | Extended reset timing and init-order fix is already in firmware; try power cycle |
+| Motors run continuously | Check active-HIGH/LOW logic of driver board; verify pins are D6/D7 |
+| No motor vibration | Confirm wires on D7 (left) and D6 (right); check driver board power; ensure haptic is enabled in controller |
 | Motors won't stop running on GPIO 7/8 | Those are SD card bus pins on the Sense board — use D6/D7 (GPIO 43/44) instead |
-| Eyes don't track motion | Toggle Motion Tracking on in controller; wipe camera lens; wait for warmup (~4s) |
+| Haptic fires constantly at idle | Increase sensitivity slider toward Low; check camera isn't pointing at a flickering light source |
+| Eyes don't track motion | Toggle Motion Tracking on in controller; wipe camera lens; wait for warmup (~4s after boot) |
 | BLE not visible in nRF Connect on iOS | iOS 26+ has issues with nRF Connect; use Chrome Web Bluetooth on desktop or Bluefy on iPhone |
 | Chrome can't find DoggleEyes | Controller filters by NUS service UUID — ensure you haven't changed the UUID |
 | Camera stream blank | Connect to `DoggleEyes-CAM` WiFi first; stream pauses while BLE preview is active |
@@ -221,21 +239,21 @@ The controller provides:
 
 ## Tuning Haptic Sensitivity
 
-In `haptic_vision.h`:
+Compile-time defaults in `haptic_vision.h`:
 
 ```cpp
 #define HAPTIC_MOTION_THRESHOLD   18    // pixel diff to count as motion (0-255)
                                         // lower = more sensitive to subtle motion
-#define HAPTIC_MIN_DENSITY        0.04f // fraction of half-frame that must move
-                                        // increase if motors trigger on camera noise
+#define HAPTIC_MIN_DENSITY        0.16f // fraction of half-frame that must move
+                                        // increase to reduce false triggers
 #define HAPTIC_PROXIMITY_WEIGHT   2.0f  // bottom-of-frame weight multiplier
                                         // higher = stronger response to close objects
 #define HAPTIC_SMOOTH_ALPHA       0.35f // EMA smoothing factor
                                         // higher = faster response, more jitter
 ```
 
-Sensitivity is also tunable at runtime via the BLE controller's haptic sensitivity slider
-without reflashing.
+Runtime sensitivity is tunable via the BLE controller slider without reflashing.
+The slider range maps to thresholds 0.30 (Low) → 0.08 (High).
 
 ---
 

@@ -148,7 +148,7 @@ input[type=range].haptic-slider::-webkit-slider-thumb{background:var(--haptic)}
     <div class="sec" style="color:var(--haptic)">📳 Haptic Obstacle Sense</div>
     <div class="tog-row">
       <label>Haptic feedback <span class="haptic-badge">MOTOR</span></label>
-      <button class="tog haptic-tog on" id="tHaptic" onclick="toggle('hapticEnabled',this)"></button>
+      <button class="tog haptic-tog" id="tHaptic" onclick="toggle('hapticEnabled',this)"></button>
     </div>
     <div class="sl-row">
       <label style="font-size:.74rem">Sensitivity</label>
@@ -271,6 +271,7 @@ input[type=range].haptic-slider::-webkit-slider-thumb{background:var(--haptic)}
       <button class="ab" onclick="doSpin()"><span class="em">🌀</span>Spin Out</button>
       <button class="ab" onclick="send({action:'dilate'})"><span class="em">🔦</span>Dilate</button>
       <button class="ab" onclick="send({action:'alert'})"><span class="em">⚠️</span>Alert!</button>
+      <button class="ab" style="grid-column:1/-1;border-color:rgba(245,166,35,.35);color:var(--gold)" onclick="doReset()"><span class="em">↺</span>Reset to Defaults</button>
     </div>
   </div>
 
@@ -295,7 +296,7 @@ const decoder=new TextDecoder();
 
 // Haptic sensitivity presets: maps 1-5 → HAPTIC_MIN_DENSITY override
 // We send this as a config param the firmware can use to scale its threshold
-const sensMap=[0.08,0.06,0.04,0.025,0.012];
+const sensMap=[0.30,0.22,0.16,0.11,0.08];  // Low=0.30 (hardest to trigger) → High=0.08 (old "Low")
 let hapticSens=3;
 
 function enqueue(obj){
@@ -476,6 +477,35 @@ function setMood(m,btn){document.querySelectorAll('.mb').forEach(b=>b.classList.
 function setColor(or_,og,ob,ir,ig,ib,sw){document.querySelectorAll('.sw').forEach(s=>s.classList.remove('active'));sw.classList.add('active');send({irisOuter:{r:or_,g:og,b:ob},irisInner:{r:ir,g:ig,b:ib}});}
 function toggle(key,btn){send({[key]:btn.classList.toggle('on')});}
 async function doSpin(){if(!connected)return;for(let a=0;a<720;a+=20){send({gazeX:Math.cos(a*Math.PI/180)*0.4,gazeY:Math.sin(a*Math.PI/180)*0.4});await new Promise(r=>setTimeout(r,30));}send({gazeX:0,gazeY:0});}
+
+function doReset(){
+  if(!connected)return;
+  // Send firmware defaults
+  send({mood:'normal',irisOuter:{r:16,g:60,b:176},irisInner:{r:80,g:160,b:240},
+        eyeScale:1,pupilScale:1,blinkRate:7.5,autoBlink:true,wiggle:false,mirror:true,
+        motionEnabled:true,lightEnabled:true,faceEnabled:true,
+        hapticEnabled:false,hapticSensitivity:0.16,gazeX:0,gazeY:0});
+  // Reset mood buttons
+  document.querySelectorAll('.mb').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.mb[onclick*="normal"]').classList.add('active');
+  // Reset sliders
+  const setSlider=(sel,val,dispId,fmt)=>{const el=document.querySelector(sel);el.value=val;document.getElementById(dispId).textContent=fmt(val);};
+  setSlider('input[oninput*="eyeScale"]',1,'szV',v=>v);
+  setSlider('input[oninput*="pupilScale"]',1,'puV',v=>v);
+  setSlider('input[oninput*="blinkRate"]',7.5,'blV',v=>v+'s');
+  const sensEl=document.querySelector('.haptic-slider');sensEl.value=3;document.getElementById('sensV').textContent='Medium';hapticSens=3;
+  // Reset toggles by label text
+  document.querySelectorAll('.tog-row').forEach(row=>{
+    const lbl=row.querySelector('label').textContent;
+    const tog=row.querySelector('.tog');
+    const on=['Auto-blink','Mirror','Motion tracking','Auto pupil','Face reaction'].some(k=>lbl.includes(k));
+    const off=['Wiggle'].some(k=>lbl.includes(k));
+    if(on)tog.classList.add('on');
+    if(off)tog.classList.remove('on');
+  });
+  // Reset colour swatches — activate blue (index 1)
+  document.querySelectorAll('.sw').forEach((s,i)=>s.classList.toggle('active',i===1));
+}
 
 // Joystick
 const jring=document.getElementById('jring'),jknob=document.getElementById('jknob');

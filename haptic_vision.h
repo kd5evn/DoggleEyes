@@ -26,8 +26,8 @@
 #include <Arduino.h>
 
 // ── Pin assignments ──────────────────────────────────────────
-#define MOTOR_LEFT_PIN    43   // GPIO 43 (D6) — coin motor, left side of goggles
-#define MOTOR_RIGHT_PIN   44   // GPIO 44 (D7) — coin motor, right side of goggles
+#define MOTOR_LEFT_PIN    44   // GPIO 44 (D7) — coin motor, left side of goggles
+#define MOTOR_RIGHT_PIN   43   // GPIO 43 (D6) — coin motor, right side of goggles
 
 // ── Tuning constants ─────────────────────────────────────────
 // Minimum % of a half-frame that must change to trigger vibration
@@ -46,7 +46,7 @@
 struct HapticState {
   float leftIntensity  = 0.0f;   // 0.0 – 1.0
   float rightIntensity = 0.0f;
-  bool  enabled        = true;
+  bool  enabled        = false;
   uint8_t leftPWM      = 0;
   uint8_t rightPWM     = 0;
   float minDensity     = HAPTIC_MIN_DENSITY;  // tunable via BLE hapticSensitivity command
@@ -69,7 +69,7 @@ inline void hapticInit() {
   pinMode(MOTOR_RIGHT_PIN, OUTPUT);
   digitalWrite(MOTOR_LEFT_PIN,  LOW);   // LOW = OFF for active-high board
   digitalWrite(MOTOR_RIGHT_PIN, LOW);
-  Serial.println("[Haptic] Motors initialised on GPIO 43/D6 (L) and GPIO 44/D7 (R) — digitalWrite mode.");
+  Serial.println("[Haptic] Motors initialised on GPIO 44/D7 (L) and GPIO 43/D6 (R) — digitalWrite mode.");
 }
 
 // ── computeHalfFrameDensity ──────────────────────────────────

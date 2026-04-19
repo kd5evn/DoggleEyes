@@ -129,8 +129,8 @@ inline void setMood(const char* m) {
 inline void initState() {
   memset(&state, 0, sizeof(state));
   setMood("normal");
-  state.irisOuter      = 0x6204;
-  state.irisInner      = 0xA145;
+  state.irisOuter      = 0x11F6;  // deep cobalt blue  ~RGB(16,  60, 176)
+  state.irisInner      = 0x551E;  // light cerulean    ~RGB(80, 160, 240)
   state.eyeScale       = 1.0f;
   state.pupilScale     = 1.0f;
   state.autoBlink      = true;
@@ -396,19 +396,21 @@ void setup() {
   // if it did, the second init() call would reset both displays, leaving
   // the first uninitialised.
   pinMode(6, OUTPUT);
-  digitalWrite(6, LOW);  delay(15);
-  digitalWrite(6, HIGH); delay(150);
+  digitalWrite(6, LOW);  delay(20);   // hold reset long enough for both displays
+  digitalWrite(6, HIGH); delay(250);  // extended settle — cold power-up needs more time
 
-  // Init each display separately. With TFT_RST=-1, the second init() call
-  // only re-sends the GC9A01 command sequence — it does not reset the SPI
-  // bus or touch RST, so the first display stays initialised.
-  selectDisplay(true);   // right display
+  // Init left display first, right display last.
+  // The display initialised second is least likely to be disturbed by
+  // subsequent SPI bus activity, so put the problematic right eye last.
+  selectDisplay(false);  // left display
   tftPtr->init();
+  delay(20);             // let GC9A01 finish processing init command sequence
   tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
 
-  selectDisplay(false);  // left display
+  selectDisplay(true);   // right display — initialised last so it's freshest
   tftPtr->init();
+  delay(20);
   tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
 
