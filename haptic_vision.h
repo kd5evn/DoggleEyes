@@ -5,26 +5,16 @@
 //  Two coin vibration motors give the dog a directional "radar":
 //    · Left motor  → obstacle detected in LEFT half of camera frame
 //    · Right motor → obstacle detected in RIGHT half of camera frame
-//    · Intensity   → 0-255 PWM, proportional to how large/close
-//                    the obstacle is (fills more of the frame)
-//    · Pattern     → continuous buzz, not a single pulse, so the
-//                    dog gets sustained directional feedback while
-//                    an obstacle remains in that zone
+//    · Intensity   → binary on/off (motion above threshold = motor on)
+//    · Pattern     → continuous buzz while obstacle remains in zone
 //
 //  GPIO assignments (camera-safe, display-safe):
-//    Motor LEFT  PWM : GPIO 7   (free on XIAO ESP32-S3 Sense)
-//    Motor RIGHT PWM : GPIO 8   (free on XIAO ESP32-S3 Sense)
+//    Motor LEFT  : GPIO 7   (free on XIAO ESP32-S3 Sense)
+//    Motor RIGHT : GPIO 8   (free on XIAO ESP32-S3 Sense)
 //
-//  Transistor circuit per motor (see wiring diagram):
-//    GPIO → 100Ω → NPN base (2N2222)
-//    NPN collector → Motor (-) lead
-//    Motor (+) lead → 3.3V
-//    Flyback diode across motor terminals (cathode to +)
-//    NPN emitter → GND
-//
-//  LEDC (ESP32 PWM) channels:
-//    Channel 4 → GPIO 7  (motor left)   [channels 0-3 used by camera XCLK]
-//    Channel 5 → GPIO 8  (motor right)
+//  Motor driver board is active-LOW:
+//    IN=LOW  → motor ON
+//    IN=HIGH → motor OFF
 //
 //  Integration: include this file in DoggleEyes.ino and call
 //    hapticInit() in setup()
@@ -36,18 +26,13 @@
 #include <Arduino.h>
 
 // ── Pin assignments ──────────────────────────────────────────
-#define MOTOR_LEFT_PIN    7    // GPIO 7  — coin motor, left side of goggles
-#define MOTOR_RIGHT_PIN   8    // GPIO 8  — coin motor, right side of goggles
-
-// ── LEDC config ──────────────────────────────────────────────
-#define MOTOR_LEDC_FREQ   200   // Hz — low freq = stronger feel, 8-bit duty (0-255)
+#define MOTOR_LEFT_PIN    43   // GPIO 43 (D6) — coin motor, left side of goggles
+#define MOTOR_RIGHT_PIN   44   // GPIO 44 (D7) — coin motor, right side of goggles
 
 // ── Tuning constants ─────────────────────────────────────────
 // Minimum % of a half-frame that must change to trigger vibration
 #define HAPTIC_MOTION_THRESHOLD   18    // per-pixel diff to count (0-255)
 #define HAPTIC_MIN_DENSITY        0.04f // 4% of half-frame pixels must move
-#define HAPTIC_MIN_PWM            60    // below this the motor won't spin
-#define HAPTIC_MAX_PWM            230   // cap — don't run motor at full blast
 // Proximity weighting: pixels in the BOTTOM of the frame are closer
 // to the dog. We weight them more heavily so approaching objects
 // ramp up the haptic before lateral objects do.
@@ -55,8 +40,6 @@
 
 // ── Smoothing ────────────────────────────────────────────────
 // Exponential moving average applied to raw intensity each frame
-// Higher alpha = more responsive but jittery
-// Lower alpha = smoother but slower to react
 #define HAPTIC_SMOOTH_ALPHA       0.35f
 
 // ── Shared state (written by visionTask on Core 0) ───────────
@@ -74,23 +57,19 @@ extern portMUX_TYPE eyeMux;
 extern HapticState hapticState;
 
 // ── hapticWrite ──────────────────────────────────────────────
-//  Internal helper — write duty to one motor via Arduino ledcWrite.
-//  Using Arduino API (not raw IDF) so GPIO ownership is always
-//  correctly maintained and cannot be broken by pinMode/digitalWrite.
-// Motor driver board is active-LOW: IN=LOW → motor ON, IN=HIGH → motor OFF.
-// Invert duty so our API uses 0=off, 255=full like a normal driver.
+//  duty > 0 → motor ON  (drive pin LOW  — active-low board)
+//  duty = 0 → motor OFF (drive pin HIGH — active-low board)
 inline void hapticWrite(int pin, uint8_t duty) {
-  ledcWrite(pin, 255 - duty);
+  digitalWrite(pin, duty > 0 ? HIGH : LOW);
 }
 
 // ── hapticInit ───────────────────────────────────────────────
 inline void hapticInit() {
-  // Arduino ESP32 v3.x API: ledcAttach(pin, freq, resolution_bits)
-  ledcAttach(MOTOR_LEFT_PIN,  MOTOR_LEDC_FREQ, 8);
-  ledcAttach(MOTOR_RIGHT_PIN, MOTOR_LEDC_FREQ, 8);
-  hapticWrite(MOTOR_LEFT_PIN,  0);  // 0=off → writes 255 (HIGH) for active-low board
-  hapticWrite(MOTOR_RIGHT_PIN, 0);
-  Serial.println("[Haptic] Motors initialised on GPIO 7 (L) and GPIO 8 (R).");
+  pinMode(MOTOR_LEFT_PIN,  OUTPUT);
+  pinMode(MOTOR_RIGHT_PIN, OUTPUT);
+  digitalWrite(MOTOR_LEFT_PIN,  LOW);   // LOW = OFF for active-high board
+  digitalWrite(MOTOR_RIGHT_PIN, LOW);
+  Serial.println("[Haptic] Motors initialised on GPIO 43/D6 (L) and GPIO 44/D7 (R) — digitalWrite mode.");
 }
 
 // ── computeHalfFrameDensity ──────────────────────────────────
@@ -133,7 +112,7 @@ inline float computeHalfFrameDensity(
 // ── updateHaptic ─────────────────────────────────────────────
 //  Call this in visionTask() after computing motion.
 //  Reads current + previous frames, computes per-side intensity,
-//  smooths it, and drives the LEDC PWM outputs directly.
+//  smooths it, and drives the motor pins directly.
 //
 //  prev : previous frame buffer (same pointer used in vision.h)
 inline void updateHaptic(
@@ -150,8 +129,8 @@ inline void updateHaptic(
   portEXIT_CRITICAL(&eyeMux);
 
   if (!enabled) {
-    hapticWrite(MOTOR_LEFT_PIN,  0);
-    hapticWrite(MOTOR_RIGHT_PIN, 0);
+    digitalWrite(MOTOR_LEFT_PIN,  LOW);   // OFF
+    digitalWrite(MOTOR_RIGHT_PIN, LOW);   // OFF
     return;
   }
 
@@ -175,32 +154,25 @@ inline void updateHaptic(
   hapticState.rightIntensity = smoothR;
   portEXIT_CRITICAL(&eyeMux);
 
-  // Map 0.0-1.0 → PWM range, with minimum spin threshold
-  auto toPWM = [](float v) -> uint8_t {
-    if (v < 0.01f) return 0;
-    int pwm = (int)(HAPTIC_MIN_PWM + v * (HAPTIC_MAX_PWM - HAPTIC_MIN_PWM));
-    if (pwm > HAPTIC_MAX_PWM) pwm = HAPTIC_MAX_PWM;
-    return (uint8_t)pwm;
-  };
+  // Binary on/off: motor fires when smoothed intensity is above noise floor
+  uint8_t pwmL = (smoothL > 0.01f) ? 1 : 0;
+  uint8_t pwmR = (smoothR > 0.01f) ? 1 : 0;
 
-  uint8_t pwmL = toPWM(smoothL);
-  uint8_t pwmR = toPWM(smoothR);
-
-  // Debug — print density + PWM every ~2s (every 30 frames at 15fps)
+  // Debug — print density every ~2s (every 30 frames at 15fps)
   static int dbgCount = 0;
   if (++dbgCount >= 30) {
-    Serial.printf("[Haptic] rawL=%.3f rawR=%.3f pwmL=%d pwmR=%d threshold=%.3f\n",
-                  rawLeft, rawRight, pwmL, pwmR, minDensity);
+    Serial.printf("[Haptic] rawL=%.3f rawR=%.3f smoothL=%.3f smoothR=%.3f motL=%d motR=%d threshold=%.3f\n",
+                  rawLeft, rawRight, smoothL, smoothR, pwmL, pwmR, minDensity);
     dbgCount = 0;
   }
 
   hapticWrite(MOTOR_LEFT_PIN,  pwmL);
   hapticWrite(MOTOR_RIGHT_PIN, pwmR);
 
-  // Store final PWM for BLE telemetry
+  // Store final state for BLE telemetry (use 0 or 255 for on/off display)
   portENTER_CRITICAL(&eyeMux);
-  hapticState.leftPWM  = pwmL;
-  hapticState.rightPWM = pwmR;
+  hapticState.leftPWM  = pwmL ? 200 : 0;
+  hapticState.rightPWM = pwmR ? 200 : 0;
   portEXIT_CRITICAL(&eyeMux);
 }
 
@@ -211,23 +183,19 @@ inline void hapticSetEnabled(bool en) {
   hapticState.enabled = en;
   portEXIT_CRITICAL(&eyeMux);
   if (!en) {
-    hapticWrite(MOTOR_LEFT_PIN,  0);
-    hapticWrite(MOTOR_RIGHT_PIN, 0);
+    digitalWrite(MOTOR_LEFT_PIN,  LOW);   // OFF
+    digitalWrite(MOTOR_RIGHT_PIN, LOW);   // OFF
   }
 }
 
 // ── hapticTest ───────────────────────────────────────────────
+//  Single 500ms pulse per motor — call manually to verify wiring.
+//  Not called from setup() during normal operation.
 inline void hapticTest() {
   Serial.println("[Haptic] Testing LEFT motor...");
-  hapticWrite(MOTOR_LEFT_PIN, 160);
-  delay(1000);
-  hapticWrite(MOTOR_LEFT_PIN, 0);
+  digitalWrite(MOTOR_LEFT_PIN, HIGH); delay(500); digitalWrite(MOTOR_LEFT_PIN, LOW);
   delay(200);
-
   Serial.println("[Haptic] Testing RIGHT motor...");
-  hapticWrite(MOTOR_RIGHT_PIN, 160);
-  delay(1000);
-  hapticWrite(MOTOR_RIGHT_PIN, 0);
-
+  digitalWrite(MOTOR_RIGHT_PIN, HIGH); delay(500); digitalWrite(MOTOR_RIGHT_PIN, LOW);
   Serial.println("[Haptic] Motor test complete.");
 }

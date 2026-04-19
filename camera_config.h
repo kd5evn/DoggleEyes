@@ -63,11 +63,12 @@ inline camera_config_t buildCameraConfig() {
   config.pixel_format = PIXFORMAT_GRAYSCALE;
   config.frame_size   = FRAMESIZE_QQVGA;   // 160x120 — fast + fits in DRAM
   config.jpeg_quality = 12;
-  config.fb_count     = 2;          // double-buffer for smooth capture
+  config.fb_count     = 1;          // single buffer — avoids DMA malloc failure on PSRAM
   config.grab_mode    = CAMERA_GRAB_LATEST;
 
-  // PSRAM: if available use it for frame buffers
-  config.fb_location  = CAMERA_FB_IN_PSRAM;
+  // Use internal DRAM for frame buffers — QQVGA grayscale is only 19 kB,
+  // fits comfortably and avoids cam_dma_config malloc failures seen with PSRAM.
+  config.fb_location  = CAMERA_FB_IN_DRAM;
 
   return config;
 }
