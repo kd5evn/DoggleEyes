@@ -399,20 +399,31 @@ void setup() {
   digitalWrite(6, LOW);  delay(20);   // hold reset long enough for both displays
   digitalWrite(6, HIGH); delay(250);  // extended settle — cold power-up needs more time
 
-  // Init left display first, right display last.
-  // The display initialised second is least likely to be disturbed by
-  // subsequent SPI bus activity, so put the problematic right eye last.
-  selectDisplay(false);  // left display
-  tftPtr->init();
-  delay(20);             // let GC9A01 finish processing init command sequence
-  tftPtr->setRotation(2);
-  tftPtr->fillScreen(TFT_BLACK);
+  // Two-pass init: send init sequence to both displays first, then
+  // configure both. This prevents the second init() from disturbing
+  // the first display's settings — whichever is initialised first
+  // would otherwise lose its rotation/fill when the SPI bus is
+  // reconfigured for the second init().
 
-  selectDisplay(true);   // right display — initialised last so it's freshest
+  // Pass 1 — init sequence only, no configuration yet
+  selectDisplay(false);
   tftPtr->init();
   delay(20);
+
+  selectDisplay(true);
+  tftPtr->init();
+  delay(20);
+
+  // Pass 2 — configure both now that both are initialised
+  selectDisplay(false);
   tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
+  delay(10);
+
+  selectDisplay(true);
+  tftPtr->setRotation(2);
+  tftPtr->fillScreen(TFT_BLACK);
+  delay(10);
 
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
