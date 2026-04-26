@@ -90,6 +90,8 @@ struct EyeState {
   float    manualGazeY;
   uint16_t irisOuter;
   uint16_t irisInner;
+  uint16_t irisOuterR;   // right eye — equals irisOuter unless heterochromia is set
+  uint16_t irisInnerR;
   float    eyeScale;
   float    pupilScale;
   bool     autoBlink;
@@ -131,6 +133,8 @@ inline void initState() {
   setMood("normal");
   state.irisOuter      = 0x11F6;  // deep cobalt blue  ~RGB(16,  60, 176)
   state.irisInner      = 0x551E;  // light cerulean    ~RGB(80, 160, 240)
+  state.irisOuterR     = 0x11F6;  // right eye defaults to same as left
+  state.irisInnerR     = 0x551E;
   state.eyeScale       = 1.0f;
   state.pupilScale     = 1.0f;
   state.autoBlink      = true;
@@ -190,6 +194,16 @@ void processCommand(const char* json) {
     state.irisInner = tftPtr->color565((uint8_t)doc["irisInner"]["r"],
                                        (uint8_t)doc["irisInner"]["g"],
                                        (uint8_t)doc["irisInner"]["b"]);
+  }
+  if (doc.containsKey("irisOuterR")) {
+    state.irisOuterR = tftPtr->color565((uint8_t)doc["irisOuterR"]["r"],
+                                        (uint8_t)doc["irisOuterR"]["g"],
+                                        (uint8_t)doc["irisOuterR"]["b"]);
+  }
+  if (doc.containsKey("irisInnerR")) {
+    state.irisInnerR = tftPtr->color565((uint8_t)doc["irisInnerR"]["r"],
+                                        (uint8_t)doc["irisInnerR"]["g"],
+                                        (uint8_t)doc["irisInnerR"]["b"]);
   }
   if (doc.containsKey("action")) {
     const char* a = doc["action"].as<const char*>();
@@ -621,7 +635,7 @@ void loop() {
 
   // Right eye
   drawEye(s.mirror ? -gx : gx, gy, true, s.blinkPhase, effectiveMood, s.eyeScale, pupilMul,
-          s.irisOuter, s.irisInner);
+          s.irisOuterR, s.irisInnerR);
   selectDisplay(true);
   spr->pushSprite(0, 0);
 

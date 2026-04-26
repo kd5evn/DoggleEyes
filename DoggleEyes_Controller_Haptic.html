@@ -206,15 +206,16 @@ input[type=range].haptic-slider::-webkit-slider-thumb{background:var(--haptic)}
   <!-- COLOR -->
   <div class="card disabled-overlay" id="colorCard">
     <div class="sec">🎨 Iris Color</div>
-    <div class="color-row">
-      <div class="sw active" style="background:#6b4226" onclick="setColor(107,66,38,160,96,48,this)"></div>
-      <div class="sw" style="background:#2a5298" onclick="setColor(26,58,122,74,122,204,this)"></div>
-      <div class="sw" style="background:#1a6b3a" onclick="setColor(15,74,42,58,154,90,this)"></div>
-      <div class="sw" style="background:#7b2d8b" onclick="setColor(90,26,106,154,74,170,this)"></div>
-      <div class="sw" style="background:#8b3a3a" onclick="setColor(106,26,26,170,90,90,this)"></div>
-      <div class="sw" style="background:#5a5a5a" onclick="setColor(51,51,51,136,136,136,this)"></div>
-      <div class="sw" style="background:#b8860b" onclick="setColor(160,112,0,212,168,0,this)"></div>
-      <div class="sw" style="background:#2e8b57" onclick="setColor(26,96,64,64,176,128,this)"></div>
+    <div class="tog-row" style="margin-bottom:.6rem">
+      <label>Heterochromia <span style="font-size:.6rem;color:var(--muted)">(different colors per eye)</span></label>
+      <button class="tog" id="heterTog" onclick="toggleHeterachromia(this)"></button>
+    </div>
+    <div id="colorBoth"><div class="color-row" id="swBoth"></div></div>
+    <div id="colorSplit" style="display:none">
+      <div style="font-size:.6rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.3rem">Left Eye</div>
+      <div class="color-row" id="swLeft"></div>
+      <div style="font-size:.6rem;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin:.5rem 0 .3rem">Right Eye</div>
+      <div class="color-row" id="swRight"></div>
     </div>
   </div>
 
@@ -474,14 +475,64 @@ function setHapticBars(l,r){
 // setInterval(()=>{if(!connected)setHapticBars(Math.random()*200,Math.random()*200);},200);
 
 function setMood(m,btn){document.querySelectorAll('.mb').forEach(b=>b.classList.remove('active'));btn.classList.add('active');send({mood:m});}
-function setColor(or_,og,ob,ir,ig,ib,sw){document.querySelectorAll('.sw').forEach(s=>s.classList.remove('active'));sw.classList.add('active');send({irisOuter:{r:or_,g:og,b:ob},irisInner:{r:ir,g:ig,b:ib}});}
 function toggle(key,btn){send({[key]:btn.classList.toggle('on')});}
+
+// ── Iris color ───────────────────────────────────────────────
+const IRIS_COLORS=[
+  {bg:'#6b4226',or_:107,og:66, ob:38, ir:160,ig:96, ib:48 },
+  {bg:'#2a5298',or_:26, og:58, ob:122,ir:74, ig:122,ib:204},
+  {bg:'#1a6b3a',or_:15, og:74, ob:42, ir:58, ig:154,ib:90 },
+  {bg:'#7b2d8b',or_:90, og:26, ob:106,ir:154,ig:74, ib:170},
+  {bg:'#8b3a3a',or_:106,og:26, ob:26, ir:170,ig:90, ib:90 },
+  {bg:'#5a5a5a',or_:51, og:51, ob:51, ir:136,ig:136,ib:136},
+  {bg:'#b8860b',or_:160,og:112,ob:0,  ir:212,ig:168,ib:0  },
+  {bg:'#2e8b57',or_:26, og:96, ob:64, ir:64, ig:176,ib:128},
+];
+let heterochromia=false,activeBothIdx=1,activeLeftIdx=1,activeRightIdx=1;
+
+function buildSwatches(){
+  ['Both','Left','Right'].forEach(side=>{
+    const container=document.getElementById('sw'+side);
+    IRIS_COLORS.forEach((c,i)=>{
+      const div=document.createElement('div');
+      div.className='sw sw-'+side.toLowerCase()+(i===1?' active':'');
+      div.style.background=c.bg;
+      div.onclick=()=>setColor(c,side.toLowerCase(),i);
+      container.appendChild(div);
+    });
+  });
+}
+
+function setColor(c,side,idx){
+  if(side==='both'){
+    activeBothIdx=idx;
+    document.querySelectorAll('.sw-both').forEach((s,i)=>s.classList.toggle('active',i===idx));
+    send({irisOuter:{r:c.or_,g:c.og,b:c.ob},irisInner:{r:c.ir,g:c.ig,b:c.ib},
+          irisOuterR:{r:c.or_,g:c.og,b:c.ob},irisInnerR:{r:c.ir,g:c.ig,b:c.ib}});
+  }else if(side==='left'){
+    activeLeftIdx=idx;
+    document.querySelectorAll('.sw-left').forEach((s,i)=>s.classList.toggle('active',i===idx));
+    send({irisOuter:{r:c.or_,g:c.og,b:c.ob},irisInner:{r:c.ir,g:c.ig,b:c.ib}});
+  }else{
+    activeRightIdx=idx;
+    document.querySelectorAll('.sw-right').forEach((s,i)=>s.classList.toggle('active',i===idx));
+    send({irisOuterR:{r:c.or_,g:c.og,b:c.ob},irisInnerR:{r:c.ir,g:c.ig,b:c.ib}});
+  }
+}
+
+function toggleHeterachromia(btn){
+  heterochromia=btn.classList.toggle('on');
+  document.getElementById('colorBoth').style.display=heterochromia?'none':'block';
+  document.getElementById('colorSplit').style.display=heterochromia?'block':'none';
+}
 async function doSpin(){if(!connected)return;for(let a=0;a<720;a+=20){send({gazeX:Math.cos(a*Math.PI/180)*0.4,gazeY:Math.sin(a*Math.PI/180)*0.4});await new Promise(r=>setTimeout(r,30));}send({gazeX:0,gazeY:0});}
 
 function doReset(){
   if(!connected)return;
-  // Send firmware defaults
-  send({mood:'normal',irisOuter:{r:16,g:60,b:176},irisInner:{r:80,g:160,b:240},
+  // Send firmware defaults (both eyes to blue, heterochromia off)
+  send({mood:'normal',
+        irisOuter:{r:16,g:60,b:176},irisInner:{r:80,g:160,b:240},
+        irisOuterR:{r:16,g:60,b:176},irisInnerR:{r:80,g:160,b:240},
         eyeScale:1,pupilScale:1,blinkRate:7.5,autoBlink:true,wiggle:false,mirror:true,
         motionEnabled:true,lightEnabled:true,faceEnabled:true,
         hapticEnabled:false,hapticSensitivity:0.16,gazeX:0,gazeY:0});
@@ -503,9 +554,16 @@ function doReset(){
     if(on)tog.classList.add('on');
     if(off)tog.classList.remove('on');
   });
-  // Reset colour swatches — activate blue (index 1)
-  document.querySelectorAll('.sw').forEach((s,i)=>s.classList.toggle('active',i===1));
+  // Reset heterochromia and swatches — both eyes to blue (index 1)
+  heterochromia=false;
+  document.getElementById('heterTog').classList.remove('on');
+  document.getElementById('colorBoth').style.display='block';
+  document.getElementById('colorSplit').style.display='none';
+  activeBothIdx=1;activeLeftIdx=1;activeRightIdx=1;
+  ['both','left','right'].forEach(s=>document.querySelectorAll('.sw-'+s).forEach((el,i)=>el.classList.toggle('active',i===1)));
 }
+
+buildSwatches();
 
 // Joystick
 const jring=document.getElementById('jring'),jknob=document.getElementById('jknob');
