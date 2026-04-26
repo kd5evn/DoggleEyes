@@ -16,8 +16,8 @@
 //    Display CS R : GPIO 2
 //    Display DC   : GPIO 3
 //    Display RST  : GPIO 6
-//    Motor LEFT   : GPIO 7   — LEDC ch4, 200Hz PWM
-//    Motor RIGHT  : GPIO 8   — LEDC ch5, 200Hz PWM
+//    Motor LEFT   : GPIO 44  (D7) — digitalWrite, active-HIGH driver
+//    Motor RIGHT  : GPIO 43  (D6) — digitalWrite, active-HIGH driver
 //
 //  Arduino IDE board settings:
 //    Board           : Seeed XIAO ESP32S3
@@ -397,7 +397,9 @@ void setup() {
   // the first uninitialised.
   pinMode(6, OUTPUT);
   digitalWrite(6, LOW);  delay(20);   // hold reset long enough for both displays
-  digitalWrite(6, HIGH); delay(250);  // extended settle — cold power-up needs more time
+  digitalWrite(6, HIGH); delay(500);  // extended settle — cold power-up needs more time
+                                       // (increased from 250ms: left eye intermittently
+                                       //  failed to init at 250ms on cold start)
 
   // Two-pass init: send init sequence to both displays first, then
   // configure both. This prevents the second init() from disturbing
@@ -408,22 +410,26 @@ void setup() {
   // Pass 1 — init sequence only, no configuration yet
   selectDisplay(false);
   tftPtr->init();
-  delay(20);
+  delay(50);  // increased from 20ms — left display needs more settle time
 
   selectDisplay(true);
   tftPtr->init();
-  delay(20);
+  delay(50);  // match left for symmetry
+
+  // Brief pause between passes — lets both controllers finish internal
+  // post-init calibration before we start sending configuration commands
+  delay(50);
 
   // Pass 2 — configure both now that both are initialised
   selectDisplay(false);
   tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
-  delay(10);
+  delay(20);  // increased from 10ms
 
   selectDisplay(true);
   tftPtr->setRotation(2);
   tftPtr->fillScreen(TFT_BLACK);
-  delay(10);
+  delay(20);  // match left
 
   digitalWrite(CS_LEFT,  HIGH);
   digitalWrite(CS_RIGHT, HIGH);
@@ -511,9 +517,12 @@ void setup() {
     }
   }
 
-  // Re-assert CS pins — camera init reconfigures IO matrix
+  // Re-assert CS and motor pins — camera init reconfigures IO matrix,
+  // which can float GPIO outputs set before esp_camera_init().
   pinMode(CS_LEFT,  OUTPUT); digitalWrite(CS_LEFT,  HIGH);
   pinMode(CS_RIGHT, OUTPUT); digitalWrite(CS_RIGHT, HIGH);
+  pinMode(MOTOR_LEFT_PIN,  OUTPUT); digitalWrite(MOTOR_LEFT_PIN,  LOW);  // LOW = motor OFF
+  pinMode(MOTOR_RIGHT_PIN, OUTPUT); digitalWrite(MOTOR_RIGHT_PIN, LOW);
 
   Serial.println("[DoggleEyes v3.1] Ready — displays + haptic + camera + BLE.");
 }

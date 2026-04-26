@@ -43,13 +43,18 @@
 #define HAPTIC_SMOOTH_ALPHA       0.35f
 
 // ── Shared state (written by visionTask on Core 0) ───────────
+// Pure POD struct — NO default member initializers.
+// Default initializers would make this non-POD, causing its constructor to
+// run at static-init time (before the Arduino runtime is ready on ESP32-S3),
+// which produces a StoreProhibited panic. Fields are zero-initialised by the
+// C++ runtime for globals, and hapticInit() sets the active defaults.
 struct HapticState {
-  float leftIntensity  = 0.0f;   // 0.0 – 1.0
-  float rightIntensity = 0.0f;
-  bool  enabled        = false;
-  uint8_t leftPWM      = 0;
-  uint8_t rightPWM     = 0;
-  float minDensity     = HAPTIC_MIN_DENSITY;  // tunable via BLE hapticSensitivity command
+  float leftIntensity;   // 0.0 – 1.0
+  float rightIntensity;
+  bool  enabled;
+  uint8_t leftPWM;
+  uint8_t rightPWM;
+  float minDensity;      // tunable via BLE hapticSensitivity command
 };
 
 // Declare extern — defined in DoggleEyes.ino
@@ -65,9 +70,17 @@ inline void hapticWrite(int pin, uint8_t duty) {
 
 // ── hapticInit ───────────────────────────────────────────────
 inline void hapticInit() {
+  // Explicit field init — struct is POD (no default member initializers)
+  hapticState.leftIntensity  = 0.0f;
+  hapticState.rightIntensity = 0.0f;
+  hapticState.enabled        = false;
+  hapticState.leftPWM        = 0;
+  hapticState.rightPWM       = 0;
+  hapticState.minDensity     = HAPTIC_MIN_DENSITY;
+
   pinMode(MOTOR_LEFT_PIN,  OUTPUT);
   pinMode(MOTOR_RIGHT_PIN, OUTPUT);
-  digitalWrite(MOTOR_LEFT_PIN,  LOW);   // LOW = OFF for active-high board
+  digitalWrite(MOTOR_LEFT_PIN,  LOW);   // LOW = OFF (active-low board: IN=LOW → motor OFF)
   digitalWrite(MOTOR_RIGHT_PIN, LOW);
   Serial.println("[Haptic] Motors initialised on GPIO 44/D7 (L) and GPIO 43/D6 (R) — digitalWrite mode.");
 }
