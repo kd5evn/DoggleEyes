@@ -70,7 +70,8 @@ NimBLEServer*         pServer = nullptr;
 NimBLECharacteristic* pTxChar = nullptr;
 NimBLECharacteristic* pRxChar = nullptr;
 bool             deviceConnected   = false;
-volatile bool    blePreviewEnabled = false;  // BLE camera preview (40×30 grayscale)
+volatile bool    blePreviewEnabled  = false;  // BLE camera preview (40×30 grayscale)
+volatile bool    reinitRequested    = false;  // set by BLE "reinit" action, consumed in loop()
 
 // ── Mutex (plain — no constructor, safe as global) ───────────
 portMUX_TYPE eyeMux = portMUX_INITIALIZER_UNLOCKED;
@@ -210,6 +211,7 @@ void processCommand(const char* json) {
     if (strcmp(a,"blink")==0)  { state.blinking = true; state.blinkPhase = 0.0f; }
     if (strcmp(a,"dilate")==0) { state.pupilScale = 1.6f; }
     if (strcmp(a,"alert")==0)  { state.alertActive = true; state.lastAlert = millis(); }
+    if (strcmp(a,"reinit")==0) { reinitRequested = true; }
   }
   portEXIT_CRITICAL(&eyeMux);
 
@@ -379,6 +381,30 @@ void selectDisplay(bool right) {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  DISPLAY RE-INIT  (called from loop() on BLE "reinit" command)
+// ─────────────────────────────────────────────────────────────
+void reinitDisplays() {
+  Serial.println("[Display] Re-init requested — pulsing RST and re-running two-pass init...");
+
+  // Hardware reset both displays — necessary if a controller is fully stuck
+  pinMode(6, OUTPUT);
+  digitalWrite(6, LOW);  delay(20);
+  digitalWrite(6, HIGH); delay(500);
+
+  // Pass 1 — init sequence only
+  selectDisplay(false); tftPtr->init(); delay(50);
+  selectDisplay(true);  tftPtr->init(); delay(50);
+  delay(50);
+
+  // Pass 2 — configure both
+  selectDisplay(false); tftPtr->setRotation(2); tftPtr->fillScreen(TFT_BLACK); delay(20);
+  selectDisplay(true);  tftPtr->setRotation(2); tftPtr->fillScreen(TFT_BLACK); delay(20);
+
+  digitalWrite(CS_LEFT, HIGH); digitalWrite(CS_RIGHT, HIGH);
+  Serial.println("[Display] Re-init complete.");
+}
+
+// ─────────────────────────────────────────────────────────────
 //  SETUP
 // ─────────────────────────────────────────────────────────────
 void setup() {
@@ -545,6 +571,14 @@ void setup() {
 //  MAIN LOOP  (Core 1)
 // ─────────────────────────────────────────────────────────────
 void loop() {
+  // Service display re-init request before anything else — runs full two-pass
+  // init including RST pulse. Safe here because we're on Core 1, the same core
+  // that owns the display, so there's no concurrent SPI access.
+  if (reinitRequested) {
+    reinitRequested = false;
+    reinitDisplays();
+  }
+
   static unsigned long lastFrame = 0;
   unsigned long now = millis();
   if (now - lastFrame < (unsigned long)FRAME_MS) return;
